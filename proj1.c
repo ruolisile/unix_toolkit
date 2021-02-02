@@ -12,6 +12,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <dirent.h>
+#include <sys/time.h>
+#include <sys/times.h>
+#include <time.h>
 
 typedef struct
 {
@@ -34,16 +37,30 @@ void add_token(tokenlist *tokens, char *item);
 void free_tokens(tokenlist *tokens);
 
 //
-void prompt();
+void check_io(tokenlist *tokens, int *input_idx, int *output_idx);
+int myexit(char *input, char *command, tokenlist *tokens);
 void mycd(tokenlist *tokens);
-void mytree(char *dir, int *level, int curr_level);
+void mytree(char *dir, char *prefix);
+char *prefix_cat(const char *prefix, const char * ext);
 
+void mytime(tokenlist *tokens);
+static int input_idx = -1;
+static int output_idx = -1;
+static clock_t st_time;
+static clock_t en_time;
+static struct tms st_cpu;
+static struct tms en_cpu;
+//void real_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
+//void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
+void end_clock();
+
+void mymtimes(tokenlist *tokens)
 int main()
 {
     while (1)
     {
         //prompt();
-        printf("$ ");
+        printf("%s@%s:%s$ ", getenv("USER"), getenv("HOSTNAME"), getenv("PWD"));
         char *input = get_input();
 
         if (input == NULL)
@@ -59,12 +76,13 @@ int main()
         char *command = (char *)malloc(strlen(tokens->items[0]) + 1);
         strcpy(command, tokens->items[0]);
 
+        input_idx = -1;
+        output_idx = -1;
+        check_io(tokens, &input_idx, &output_idx);
+
         if (strcmp(command, "myexit") == 0)
         {
-            free(input);
-            free(command);
-            free_tokens(tokens);
-            return 0;
+            myexit(input, command, tokens);
         }
         if (strcmp(command, "mycd") == 0)
         {
@@ -82,14 +100,18 @@ int main()
         {
             if (tokens->size == 1)
             {
-                int level = 0;
-                mytree(".", &level, level);
+               
+                mytree(".", "|----");
             }
             else if (tokens->size == 2)
             {
-                int level = 0;
-                mytree(tokens->items[1], &level, level);
+                
+                mytree(tokens->items[1], "|----");
             }
+        }
+        if (strcmp(command, "mytime") == 0)
+        {
+            mytime(tokens);
         }
 
         free(input);
@@ -185,18 +207,29 @@ void free_tokens(tokenlist *tokens)
 
     free(tokens);
 }
-
-void prompt()
+/*I/O redirection check
+* All I/O redirection require space between "<"" and input, ">" and output 
+*/
+void check_io(tokenlist *tokens, int *input_idx, int *output_idx)
 {
-    //prompt
-    char usr[] = "USER"; //get user name
-    char *usrptr = usr;
-    char machine[] = "HOSTNAME"; //get machine name
-    char *machineptr = machine;
-    char pwd[] = "PWD"; //get word dir
-    char *pwdptr = pwd;
-
-    printf("%s@%s: %s $ ", getenv(usrptr), getenv(machineptr), getenv(pwdptr));
+    for (size_t i = 0; i < tokens->size; i++)
+    {
+        if (strcmp(tokens->items[i], "<") == 0)
+        {
+            *input_idx = i + 1;
+        }
+        if (strcmp(tokens->items[i], ">") == 0)
+        {
+            *output_idx = i + 1;
+        }
+    }
+}
+int myexit(char *input, char *command, tokenlist *tokens)
+{
+    free(input);
+    free(command);
+    free_tokens(tokens);
+    exit(0);
 }
 
 void mycd(tokenlist *tokens)
@@ -211,7 +244,33 @@ void mycd(tokenlist *tokens)
         setenv("PWD", cwd, 1);
         free(cwd);
     }
+    /*     pid_t pid = fork();
+    if (pid == 0)
+    {
+        //I/O redirection
+        if((input_idx != -1) && (output_idx != -1))
+        {
+            int input_fd = open(tokens->items[input_idx], O_RDONLY, 0);
+            if(input_fd < 0)
+            {
+                printf("%s: No Such File\n", tokens->items[input_idx]);
+                return;
+            }
+            close(0);//close stdin 
+            dup(input_fd); //read from input file
+            close(input_fd);
+
+            int output_fd = open(tokens->items[output_idx], O_WRONLY|O_CREAT, 0666);
+            close(1);
+            dup(output_fd);
+            close(output_fd);
+            int flag = execv("/bin/cd", tokens->items);
+            printf("%d\n", flag);
+        }
+    }
+     */
     //cd to a directory
+
     //after cd to home, cd doesn't work
     if (tokens->size == 2)
     {
@@ -226,10 +285,13 @@ void mycd(tokenlist *tokens)
     }
 }
 
-void mytree(char *dir, int *level, int curr_level)
+//tree doesn't support input redirection in ubuntu
+// so, only inplement output redirection
+void mytree(char *dir, char *prefix)
 {
     struct dirent **namelist;
     int i, n;
+    char *prefix_ext;
     n = scandir(dir, &namelist, 0, alphasort);
     if (n < 0)
     {
@@ -238,12 +300,9 @@ void mytree(char *dir, int *level, int curr_level)
     }
     else
     {
-        if (*level == 0)
-        {
-            printf("%s\n", dir);
-        }
         for (i = 0; i < n; i++)
         {
+
             if (strcmp(namelist[i]->d_name, "..") == 0 | strcmp(namelist[i]->d_name, ".") == 0)
             {
                 continue;
@@ -251,14 +310,9 @@ void mytree(char *dir, int *level, int curr_level)
             if (namelist[i]->d_type == DT_DIR)
             {
                 //  printf("level is %d\n", *level);
-                printf("|");
-                for (size_t i = 0; i <= *level; i++)
-                {
-                    printf("----");
-                }
 
-                printf("%s\n", namelist[i]->d_name);
-                *level += 1;
+                printf("%s%s\n", prefix, namelist[i]->d_name);
+                
                 char new_dir[128];
                 //printf("last char is %c\n", dir[strlen(dir) - 1]);
                 if (dir[strlen(dir) - 1] == '/')
@@ -276,25 +330,164 @@ void mytree(char *dir, int *level, int curr_level)
                     //printf("new dir is %s\n", new_dir);
                     strcat(new_dir, namelist[i]->d_name);
                 }
-                mytree(new_dir, level, *level);
+                prefix_ext = "|----";
+                
+                prefix_ext = prefix_cat(prefix, prefix_ext);
+                mytree(new_dir, prefix_ext);
+                free(prefix_ext);
             }
             else
             {
                 //  printf("current level is %d\n", curr_level);
-                printf("|");
-                for (size_t i = 0; i <= curr_level; i++)
-                {
-                    printf("----");
-                }
-                printf("%s\n", namelist[i]->d_name);
+                printf("%s%s\n", prefix, namelist[i]->d_name);
             }
             free(namelist[i]);
-            //decrease level by 1 when all files in a dir is listed
-            if (i == n - 1)
-            {
-                *level -= 1;
-            }
+ 
         }
     }
     free(namelist);
 }
+
+char *prefix_cat(const char *prefix, const char * ext)
+{
+    char *res = malloc(strlen(prefix) + strlen(ext) + 1);
+    strcpy(res, prefix);
+    strcat(res, ext);
+    return res;
+}
+
+void mytime(tokenlist *tokens)
+{
+    //create new tokenlist without the first tokens
+    tokenlist *toks = new_tokenlist();
+    toks->size = tokens->size - 1;
+    for (size_t i = 0; i < toks->size; i++)
+    {
+        toks->items[i] = tokens->items[i + 1];
+        printf("%s\n", toks->items[i]);
+    }
+
+    struct timeval start_t, end_t;
+    int total_min;
+    double total_sec, total_msec;
+    //if built in function
+    if (strcmp(toks->items[0], "myexit") == 0)
+    {
+        exit(0);
+        //will terminate the program without output
+    }
+    if (strcmp(toks->items[0], "mycd") == 0)
+    {
+        gettimeofday(&start_t, NULL);
+
+        st_time = times(&st_cpu);
+        mycd(toks);
+        end_clock();
+        // printf("Real Time: %jd, User Time %jd, System Time %jd\n",
+        // (intmax_t)(en_time - st_time),
+        // (intmax_t)(en_cpu.tms_utime - st_cpu.tms_utime),
+        // (intmax_t)(en_cpu.tms_stime - st_cpu.tms_stime));
+
+        gettimeofday(&end_t, NULL);
+        //real time
+        printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
+        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
+        // real_time(start_t, end_t, &total_min, &total_sec);
+
+        // total_sec += total_msec;
+        // printf("real\t\t%dm%.3fs\n", total_min, total_sec);
+        // //user time
+
+        // //sys CPU time
+        // sys_time(start_t, end_t, &total_min, &total_sec);
+        // printf("sys\t\t%dm%.3fs\n", total_min, total_sec);
+    }
+    if (strcmp(toks->items[0], "mytree") == 0)
+    {
+        gettimeofday(&start_t, NULL);
+
+        st_time = times(&st_cpu);
+        
+        mytree(toks->items[1], "----");
+        end_clock();
+
+        gettimeofday(&end_t, NULL);
+        //real time
+        printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
+        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
+    }
+    if(strcmp(toks->items[0], "loop") == 0)
+    {
+        gettimeofday(&start_t, NULL);
+
+        st_time = times(&st_cpu);
+        int level = 0;
+        for (size_t i = 0; i < 10000000; i++)
+        {
+            /* code */
+        }
+        
+        end_clock();
+        // printf("Real Time: %jd, User Time %jd, System Time %jd\n",
+        // (intmax_t)(en_time - st_time),
+        // (intmax_t)(en_cpu.tms_utime - st_cpu.tms_utime),
+        // (intmax_t)(en_cpu.tms_stime - st_cpu.tms_stime));
+
+        gettimeofday(&end_t, NULL);
+        //real time
+        printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
+        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);   
+    }
+    if(strcmp(toks->items[0], ))
+    
+}
+
+
+// void real_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec)
+// {
+//     *total_min = (int)(end_t.tv_sec - start_t.tv_sec) / 60;
+//     *total_sec = (double)((end_t.tv_sec - start_t.tv_sec) % 60);
+//     double total_msec = (end_t.tv_usec - start_t.tv_usec) / (double)1000000;
+//     *total_sec += total_msec;
+// }
+
+// void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec)
+// {
+//         *total_min = (int) ((end_t.tv_sec - start_t.tv_sec) / clk_tck) / 60;
+//         *total_sec =  (end_t.tv_sec - start_t.tv_sec) % clk_tck;
+//         double total_msec;
+//         total_msec = ((end_t.tv_usec - start_t.tv_usec) /(double)1000000);
+//         total_msec = total_msec / (double)clk_tck;
+//         *total_sec += total_msec;
+// }
+
+void end_clock()
+{
+    long clk_tck = sysconf (_SC_CLK_TCK);
+    en_time = times(&en_cpu);
+    printf("%d\n", _SC_CLK_TCK);
+    printf("en_time %ld\n", en_time);
+    printf("st_time %ld\n", st_time);
+    printf("%f\n", (en_time - st_time) / (double) clk_tck );
+    int min = ((en_time - st_time) / (double) clk_tck) / 60; 
+    double sec = (en_time - st_time) / (double) clk_tck - min;
+    printf("%f\n",(en_time - st_time) / (double) clk_tck - min);
+    printf("real\t\t%dm%.3fs\n", min, sec);
+
+    printf("%ld\n",(en_cpu.tms_utime + en_cpu.tms_cutime));
+     printf("%ld\n",(st_cpu.tms_utime + st_cpu.tms_cutime));
+    min = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime));
+    min = (min / (double) clk_tck) / 60;
+    sec = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime)) / (double)clk_tck - min;
+    printf("usr\t\t%dm%.3fs\n", min, sec);
+    
+    printf("%ld\n",(en_cpu.tms_stime + en_cpu.tms_cstime));
+    printf("%ld\n",(st_cpu.tms_stime + st_cpu.tms_cstime));
+    min = ((en_cpu.tms_stime + en_cpu.tms_cstime) - (st_cpu.tms_stime + st_cpu.tms_cstime));
+    min = (min / (double) clk_tck) / 60;
+    sec = ((en_cpu.tms_stime + en_cpu.tms_cstime) - 
+    (st_cpu.tms_stime + st_cpu.tms_cstime)) / (double)clk_tck - min;
+    printf("sys\t\t%dm%.3fs\n", min, sec);
+}
+
+void my
