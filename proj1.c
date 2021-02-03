@@ -41,7 +41,7 @@ void check_io(tokenlist *tokens, int *input_idx, int *output_idx);
 int myexit(char *input, char *command, tokenlist *tokens);
 void mycd(tokenlist *tokens);
 void mytree(char *dir, char *prefix);
-char *prefix_cat(const char *prefix, const char * ext);
+char *prefix_cat(const char *prefix, const char *ext);
 
 void mytime(tokenlist *tokens);
 static int input_idx = -1;
@@ -54,7 +54,10 @@ static struct tms en_cpu;
 //void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
 void end_clock();
 
-void mymtimes(tokenlist *tokens)
+void mymtimes(tokenlist *tokens);
+long int get_mtime(char *path);
+void mtime(char *path, int count[], time_t curr_time);
+void print_t(time_t);
 int main()
 {
     while (1)
@@ -100,18 +103,22 @@ int main()
         {
             if (tokens->size == 1)
             {
-               
+
                 mytree(".", "|----");
             }
             else if (tokens->size == 2)
             {
-                
+
                 mytree(tokens->items[1], "|----");
             }
         }
         if (strcmp(command, "mytime") == 0)
         {
             mytime(tokens);
+        }
+        if (strcmp(command, "mymtimes") == 0)
+        {
+            mymtimes(tokens);
         }
 
         free(input);
@@ -303,7 +310,7 @@ void mytree(char *dir, char *prefix)
         for (i = 0; i < n; i++)
         {
 
-            if (strcmp(namelist[i]->d_name, "..") == 0 | strcmp(namelist[i]->d_name, ".") == 0)
+            if (strcmp(namelist[i]->d_name, "..") == 0 || strcmp(namelist[i]->d_name, ".") == 0)
             {
                 continue;
             }
@@ -312,7 +319,7 @@ void mytree(char *dir, char *prefix)
                 //  printf("level is %d\n", *level);
 
                 printf("%s%s\n", prefix, namelist[i]->d_name);
-                
+
                 char new_dir[128];
                 //printf("last char is %c\n", dir[strlen(dir) - 1]);
                 if (dir[strlen(dir) - 1] == '/')
@@ -331,7 +338,7 @@ void mytree(char *dir, char *prefix)
                     strcat(new_dir, namelist[i]->d_name);
                 }
                 prefix_ext = "|----";
-                
+
                 prefix_ext = prefix_cat(prefix, prefix_ext);
                 mytree(new_dir, prefix_ext);
                 free(prefix_ext);
@@ -342,13 +349,12 @@ void mytree(char *dir, char *prefix)
                 printf("%s%s\n", prefix, namelist[i]->d_name);
             }
             free(namelist[i]);
- 
         }
     }
     free(namelist);
 }
 
-char *prefix_cat(const char *prefix, const char * ext)
+char *prefix_cat(const char *prefix, const char *ext)
 {
     char *res = malloc(strlen(prefix) + strlen(ext) + 1);
     strcpy(res, prefix);
@@ -407,7 +413,7 @@ void mytime(tokenlist *tokens)
         gettimeofday(&start_t, NULL);
 
         st_time = times(&st_cpu);
-        
+
         mytree(toks->items[1], "----");
         end_clock();
 
@@ -416,7 +422,7 @@ void mytime(tokenlist *tokens)
         printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
         printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
     }
-    if(strcmp(toks->items[0], "loop") == 0)
+    if (strcmp(toks->items[0], "loop") == 0)
     {
         gettimeofday(&start_t, NULL);
 
@@ -426,7 +432,7 @@ void mytime(tokenlist *tokens)
         {
             /* code */
         }
-        
+
         end_clock();
         // printf("Real Time: %jd, User Time %jd, System Time %jd\n",
         // (intmax_t)(en_time - st_time),
@@ -436,12 +442,9 @@ void mytime(tokenlist *tokens)
         gettimeofday(&end_t, NULL);
         //real time
         printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
-        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);   
+        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
     }
-    if(strcmp(toks->items[0], ))
-    
 }
-
 
 // void real_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec)
 // {
@@ -463,31 +466,142 @@ void mytime(tokenlist *tokens)
 
 void end_clock()
 {
-    long clk_tck = sysconf (_SC_CLK_TCK);
+    long clk_tck = sysconf(_SC_CLK_TCK);
     en_time = times(&en_cpu);
     printf("%d\n", _SC_CLK_TCK);
     printf("en_time %ld\n", en_time);
     printf("st_time %ld\n", st_time);
-    printf("%f\n", (en_time - st_time) / (double) clk_tck );
-    int min = ((en_time - st_time) / (double) clk_tck) / 60; 
-    double sec = (en_time - st_time) / (double) clk_tck - min;
-    printf("%f\n",(en_time - st_time) / (double) clk_tck - min);
+    printf("%f\n", (en_time - st_time) / (double)clk_tck);
+    int min = ((en_time - st_time) / (double)clk_tck) / 60;
+    double sec = (en_time - st_time) / (double)clk_tck - min;
+    printf("%f\n", (en_time - st_time) / (double)clk_tck - min);
     printf("real\t\t%dm%.3fs\n", min, sec);
 
-    printf("%ld\n",(en_cpu.tms_utime + en_cpu.tms_cutime));
-     printf("%ld\n",(st_cpu.tms_utime + st_cpu.tms_cutime));
+    printf("%ld\n", (en_cpu.tms_utime + en_cpu.tms_cutime));
+    printf("%ld\n", (st_cpu.tms_utime + st_cpu.tms_cutime));
     min = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime));
-    min = (min / (double) clk_tck) / 60;
+    min = (min / (double)clk_tck) / 60;
     sec = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime)) / (double)clk_tck - min;
     printf("usr\t\t%dm%.3fs\n", min, sec);
-    
-    printf("%ld\n",(en_cpu.tms_stime + en_cpu.tms_cstime));
-    printf("%ld\n",(st_cpu.tms_stime + st_cpu.tms_cstime));
+
+    printf("%ld\n", (en_cpu.tms_stime + en_cpu.tms_cstime));
+    printf("%ld\n", (st_cpu.tms_stime + st_cpu.tms_cstime));
     min = ((en_cpu.tms_stime + en_cpu.tms_cstime) - (st_cpu.tms_stime + st_cpu.tms_cstime));
-    min = (min / (double) clk_tck) / 60;
-    sec = ((en_cpu.tms_stime + en_cpu.tms_cstime) - 
-    (st_cpu.tms_stime + st_cpu.tms_cstime)) / (double)clk_tck - min;
+    min = (min / (double)clk_tck) / 60;
+    sec = ((en_cpu.tms_stime + en_cpu.tms_cstime) -
+           (st_cpu.tms_stime + st_cpu.tms_cstime)) /
+              (double)clk_tck -
+          min;
     printf("sys\t\t%dm%.3fs\n", min, sec);
 }
 
-void my
+void mymtimes(tokenlist *tokens)
+{
+    time_t curr_time;
+    time(&curr_time);
+    
+   // printf("current time: %s%ld\n", ctime(&curr_time), curr_time);
+    int count[24];
+    for (size_t i = 0; i < 24; i++)
+    {
+        count[i] = 0;
+    }
+    
+    if (tokens->size == 1)
+    {
+        mtime(".", count, curr_time);
+    }
+    else
+    {
+        mtime(tokens->items[1], count, curr_time);
+    }
+   
+    for (size_t i = 1; i <= 24; i++)
+    {
+        time_t hour = curr_time - 3600 * i;
+        print_t(hour);
+        printf(": %d\n", count[i - 1]);
+    }
+    
+    
+    
+}
+
+
+
+void mtime(char *path, int count[], time_t curr_time)
+{
+    char *path_cp;
+    if (path[strlen(path) - 1] != '/')
+    {
+        path_cp = malloc(strlen(path) + 1 + 1);
+        strcpy(path_cp, path);
+        strcat(path_cp, "/");
+    }
+    else
+    {
+        path_cp = malloc( strlen(path) + 1);
+        strcpy(path_cp, path);    
+    }
+    
+
+    struct dirent *dp;
+    DIR *dir = opendir(path_cp);
+    if (!dir)
+    {
+        perror(path_cp);
+        return;
+    }
+    while ((dp = readdir(dir)) != NULL)
+    {
+        if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+        {
+            continue;
+        }
+        if (dp->d_type == DT_DIR)
+        {
+            char new_dir[128];
+            //printf("last char is %c\n", dir[strlen(dir) - 1]);
+            if (path_cp[strlen(path_cp) - 1] == '/')
+            {
+                //  printf("with /\n");
+                strcpy(new_dir, path_cp);
+                strcat(new_dir, dp->d_name);
+            }
+ 
+            mtime(new_dir, count, curr_time);
+        }
+        else
+        {
+            //get file modification time
+            //char *f_path = malloc(strlen(path_cp) + strlen(dp->d_name) + 1);
+            char f_path[512];
+            
+            strcpy(f_path, path_cp);
+            strcat(f_path, dp->d_name);
+            struct stat attr;
+            stat(f_path, &attr);
+
+            int index = (curr_time - attr.st_mtime) / 3600;
+           
+            if (index < 24)
+            {
+                count[index]++;
+            }
+            
+            
+           // free(f_path);
+        }
+        
+    }
+    free(path_cp);
+}
+
+void print_t(time_t hour)
+{
+    char s[512];
+    struct tm *p = localtime(&hour) ;
+    strftime(s, 512, "%a %b %d %T %Y", p);
+    printf("%s", s);
+    
+}
