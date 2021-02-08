@@ -22,12 +22,6 @@ typedef struct
     char **items;
 } tokenlist;
 
-typedef struct
-{
-    int size;
-    char **items;
-} cmd_list;
-
 //parser, reused from COP4610 OS Project 1
 char *get_input(void);
 tokenlist *get_tokens(char *input);
@@ -36,13 +30,20 @@ tokenlist *new_tokenlist(void);
 void add_token(tokenlist *tokens, char *item);
 void free_tokens(tokenlist *tokens);
 
-//
+//I/O redirction
 void check_io(tokenlist *tokens, int *input_idx, int *output_idx);
+tokenlist *get_argvs(tokenlist *tokens);
+void out_redirect(tokenlist *tokens);
+
+//myexit
 int myexit(char *input, char *command, tokenlist *tokens);
+//mycd 
 void mycd(tokenlist *tokens);
+//mytree
 void mytree(char *dir, char *prefix);
 char *prefix_cat(const char *prefix, const char *ext);
 
+//mytime 
 void mytime(tokenlist *tokens);
 static int input_idx = -1;
 static int output_idx = -1;
@@ -54,12 +55,21 @@ static struct tms en_cpu;
 //void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
 void end_clock();
 
+//mymtimes 
 void mymtimes(tokenlist *tokens);
 long int get_mtime(char *path);
 void mtime(char *path, int count[], time_t curr_time);
 void print_t(time_t);
+
+//run external command
+int exe(tokenlist *tokens);
+char *path_search(char* command);
+//main
 int main()
 {
+    char *home; //get the dir where this program is located
+    home = getcwd(NULL, 0);
+    printf("%s\n", home);
     while (1)
     {
         //prompt();
@@ -87,38 +97,88 @@ int main()
         {
             myexit(input, command, tokens);
         }
-        if (strcmp(command, "mycd") == 0)
+        else if (strcmp(command, "mycd") == 0)
         {
             // printf("current dir is %s\n", getenv("PWD"));
             mycd(tokens);
             // printf("dir after change is %s\n", getenv("PWD"));
         }
 
-        if (strcmp(command, "mypwd") == 0)
+        else if (strcmp(command, "mypwd") == 0)
         {
             printf("%s\n", getenv("PWD"));
         }
 
-        if (strcmp(command, "mytree") == 0)
+        else if (strcmp(command, "mytree") == 0)
         {
-            if (tokens->size == 1)
-            {
 
+            tokenlist *argvs = get_argvs(tokens);
+            int saved_stdout = dup(1); //for restoring stdout to screen
+            if (output_idx != -1)
+            {
+                out_redirect(tokens);
+            }
+
+            if (argvs->size == 1)
+            {
+                printf(".\n");
                 mytree(".", "|----");
             }
-            else if (tokens->size == 2)
+            else
             {
-
-                mytree(tokens->items[1], "|----");
+                printf("%s\n", argvs->items[1]);
+                mytree(argvs->items[1], "|----");
+            }
+            if (output_idx != -1)
+            {
+                dup2(saved_stdout, 1);
+                close(saved_stdout);
+                printf("restored\n");
             }
         }
-        if (strcmp(command, "mytime") == 0)
+        else if (strcmp(command, "mytime") == 0)
         {
             mytime(tokens);
         }
-        if (strcmp(command, "mymtimes") == 0)
+        else if (strcmp(command, "mymtimes") == 0)
         {
-            mymtimes(tokens);
+            tokenlist *argvs = get_argvs(tokens);
+            int saved_stdout = dup(1); //for restoring stdout to screen
+            if (output_idx != -1)
+            {
+                out_redirect(tokens);
+            }
+            mymtimes(argvs);
+            if (output_idx != -1)
+            {
+                dup2(saved_stdout, 1);
+                close(saved_stdout);
+                printf("restored\n");
+            }
+            
+        }
+        else
+        {
+            char *exe_cmd= path_search(command);
+            printf("command %s\n", exe_cmd);
+            if (exe_cmd == NULL)
+            {
+                printf("%s: Command not found\n", command);
+            }
+            else
+            {
+                tokens->items[0] = realloc(tokens->items[0], strlen(exe_cmd) + 1);
+                //printf("reallocated %ld %ld\n", strlen(tokens->items[0]),strlen(exe_cmd) + 1 );
+                
+                memset(tokens->items[0], '\0',strlen(tokens->items[0] + 1));
+                strcpy(tokens->items[0], exe_cmd);
+                
+               // printf("copied\n");
+                //printf("%s\n", tokens->items[0]);
+                exe(tokens);
+            }
+            
+            //free(exe_cmd);
         }
 
         free(input);
@@ -244,38 +304,17 @@ void mycd(tokenlist *tokens)
     //cd to home
     if (tokens->size == 1)
     {
-        //get home dir
         char *home = getenv("HOME");
         int flag = chdir(home);
         char *cwd = getcwd(NULL, 0);
+        if (flag != 0)
+        {
+            perror(tokens->items[1]);
+        }
         setenv("PWD", cwd, 1);
         free(cwd);
     }
-    /*     pid_t pid = fork();
-    if (pid == 0)
-    {
-        //I/O redirection
-        if((input_idx != -1) && (output_idx != -1))
-        {
-            int input_fd = open(tokens->items[input_idx], O_RDONLY, 0);
-            if(input_fd < 0)
-            {
-                printf("%s: No Such File\n", tokens->items[input_idx]);
-                return;
-            }
-            close(0);//close stdin 
-            dup(input_fd); //read from input file
-            close(input_fd);
 
-            int output_fd = open(tokens->items[output_idx], O_WRONLY|O_CREAT, 0666);
-            close(1);
-            dup(output_fd);
-            close(output_fd);
-            int flag = execv("/bin/cd", tokens->items);
-            printf("%d\n", flag);
-        }
-    }
-     */
     //cd to a directory
 
     //after cd to home, cd doesn't work
@@ -292,8 +331,8 @@ void mycd(tokenlist *tokens)
     }
 }
 
-//tree doesn't support input redirection in ubuntu
-// so, only inplement output redirection
+//tree doesn't support input redirection
+// only inplement output redirection
 void mytree(char *dir, char *prefix)
 {
     struct dirent **namelist;
@@ -316,7 +355,6 @@ void mytree(char *dir, char *prefix)
             }
             if (namelist[i]->d_type == DT_DIR)
             {
-                //  printf("level is %d\n", *level);
 
                 printf("%s%s\n", prefix, namelist[i]->d_name);
 
@@ -374,8 +412,7 @@ void mytime(tokenlist *tokens)
     }
 
     struct timeval start_t, end_t;
-    int total_min;
-    double total_sec, total_msec;
+
     //if built in function
     if (strcmp(toks->items[0], "myexit") == 0)
     {
@@ -427,8 +464,8 @@ void mytime(tokenlist *tokens)
         gettimeofday(&start_t, NULL);
 
         st_time = times(&st_cpu);
-        int level = 0;
-        for (size_t i = 0; i < 10000000; i++)
+
+        for (size_t i = 0; i < 100000000; i++)
         {
             /* code */
         }
@@ -468,24 +505,24 @@ void end_clock()
 {
     long clk_tck = sysconf(_SC_CLK_TCK);
     en_time = times(&en_cpu);
-    printf("%d\n", _SC_CLK_TCK);
-    printf("en_time %ld\n", en_time);
-    printf("st_time %ld\n", st_time);
-    printf("%f\n", (en_time - st_time) / (double)clk_tck);
+    //printf("%d\n", _SC_CLK_TCK);
+    //printf("en_time %ld\n", en_time);
+    //printf("st_time %ld\n", st_time);
+    //printf("%f\n", (en_time - st_time) / (double)clk_tck);
     int min = ((en_time - st_time) / (double)clk_tck) / 60;
     double sec = (en_time - st_time) / (double)clk_tck - min;
-    printf("%f\n", (en_time - st_time) / (double)clk_tck - min);
+    //printf("%f\n", (en_time - st_time) / (double)clk_tck - min);
     printf("real\t\t%dm%.3fs\n", min, sec);
 
-    printf("%ld\n", (en_cpu.tms_utime + en_cpu.tms_cutime));
-    printf("%ld\n", (st_cpu.tms_utime + st_cpu.tms_cutime));
+    //printf("%ld\n", (en_cpu.tms_utime + en_cpu.tms_cutime));
+    //printf("%ld\n", (st_cpu.tms_utime + st_cpu.tms_cutime));
     min = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime));
     min = (min / (double)clk_tck) / 60;
     sec = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime)) / (double)clk_tck - min;
     printf("usr\t\t%dm%.3fs\n", min, sec);
 
-    printf("%ld\n", (en_cpu.tms_stime + en_cpu.tms_cstime));
-    printf("%ld\n", (st_cpu.tms_stime + st_cpu.tms_cstime));
+    //printf("%ld\n", (en_cpu.tms_stime + en_cpu.tms_cstime));
+    //printf("%ld\n", (st_cpu.tms_stime + st_cpu.tms_cstime));
     min = ((en_cpu.tms_stime + en_cpu.tms_cstime) - (st_cpu.tms_stime + st_cpu.tms_cstime));
     min = (min / (double)clk_tck) / 60;
     sec = ((en_cpu.tms_stime + en_cpu.tms_cstime) -
@@ -499,14 +536,14 @@ void mymtimes(tokenlist *tokens)
 {
     time_t curr_time;
     time(&curr_time);
-    
-   // printf("current time: %s%ld\n", ctime(&curr_time), curr_time);
+
+    // printf("current time: %s%ld\n", ctime(&curr_time), curr_time);
     int count[24];
     for (size_t i = 0; i < 24; i++)
     {
         count[i] = 0;
     }
-    
+
     if (tokens->size == 1)
     {
         mtime(".", count, curr_time);
@@ -515,19 +552,14 @@ void mymtimes(tokenlist *tokens)
     {
         mtime(tokens->items[1], count, curr_time);
     }
-   
+
     for (size_t i = 1; i <= 24; i++)
     {
         time_t hour = curr_time - 3600 * i;
         print_t(hour);
         printf(": %d\n", count[i - 1]);
     }
-    
-    
-    
 }
-
-
 
 void mtime(char *path, int count[], time_t curr_time)
 {
@@ -540,10 +572,9 @@ void mtime(char *path, int count[], time_t curr_time)
     }
     else
     {
-        path_cp = malloc( strlen(path) + 1);
-        strcpy(path_cp, path);    
+        path_cp = malloc(strlen(path) + 1);
+        strcpy(path_cp, path);
     }
-    
 
     struct dirent *dp;
     DIR *dir = opendir(path_cp);
@@ -568,7 +599,7 @@ void mtime(char *path, int count[], time_t curr_time)
                 strcpy(new_dir, path_cp);
                 strcat(new_dir, dp->d_name);
             }
- 
+
             mtime(new_dir, count, curr_time);
         }
         else
@@ -576,23 +607,21 @@ void mtime(char *path, int count[], time_t curr_time)
             //get file modification time
             //char *f_path = malloc(strlen(path_cp) + strlen(dp->d_name) + 1);
             char f_path[512];
-            
+
             strcpy(f_path, path_cp);
             strcat(f_path, dp->d_name);
             struct stat attr;
             stat(f_path, &attr);
 
             int index = (curr_time - attr.st_mtime) / 3600;
-           
+
             if (index < 24)
             {
                 count[index]++;
             }
-            
-            
-           // free(f_path);
+
+            // free(f_path);
         }
-        
     }
     free(path_cp);
 }
@@ -600,8 +629,148 @@ void mtime(char *path, int count[], time_t curr_time)
 void print_t(time_t hour)
 {
     char s[512];
-    struct tm *p = localtime(&hour) ;
+    struct tm *p = localtime(&hour);
     strftime(s, 512, "%a %b %d %T %Y", p);
     printf("%s", s);
-    
+}
+
+void out_redirect(tokenlist *tokens)
+{
+    int output_fd = open(tokens->items[output_idx], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    close(1);
+    dup(output_fd);
+    close(output_fd);
+}
+tokenlist *get_argvs(tokenlist *tokens)
+{
+    tokenlist *argvs = new_tokenlist();
+    int size = tokens->size;
+    if (input_idx != -1)
+    {
+        size -= 2;
+    }
+    if (output_idx != -1)
+    {
+        size -= 2;
+    }
+    argvs->size = size;
+
+    int j = 0;
+    for (size_t i = 0; i < tokens->size; i++)
+    {
+        if (i == input_idx - 1 || i == output_idx - 1 || i == input_idx || i == output_idx)
+        {
+            continue;
+        }
+        else
+        {
+            argvs->items[j] = tokens->items[i];
+            j++;
+        }
+    }
+
+    return argvs;
+}
+
+//run external command
+int exe(tokenlist *tokens)
+{
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+        //both input redirection and output redirect
+        if ((input_idx != -1 && output_idx != -1))
+        {
+
+            int input_fd = open(tokens->items[input_idx], O_RDONLY, 0);
+            if (input_fd < 0)
+            {
+                fprintf(stderr, "Fail to open %s for reading\n", tokens->items[input_idx]);
+
+                return (EXIT_FAILURE);
+            }
+            close(0); //close for stdin
+            dup(input_fd);
+            close(input_fd);
+
+            int output_fd = open(tokens->items[output_idx], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            close(1);
+            dup(output_fd);
+            close(output_fd);
+            //create argument list
+            tokenlist *argvs = get_argvs(tokens);
+            execv(argvs->items[0], argvs->items);
+            free_tokens(argvs);
+        }
+        else if (input_idx != -1)
+        {
+            //printf("in\n");
+            int input_fd = open(tokens->items[input_idx], O_RDONLY);
+            if (input_fd < 0)
+            {
+                fprintf(stderr, "Fail to open %s for reading\n", tokens->items[input_idx]);
+                return (EXIT_FAILURE);
+            }
+            tokenlist *argvs = get_argvs(tokens);
+            close(0); //close for stdin
+            dup2(input_fd, 0);
+            close(input_fd);
+
+            //get argument list
+
+            execvp(argvs->items[0], argvs->items);
+            free_tokens(argvs);
+        }
+        else if (output_idx != -1)
+        {
+            //printf("out\n");
+            int output_fd = open(tokens->items[output_idx], O_WRONLY | O_CREAT | O_TRUNC, 0666);
+            //create argument list
+            tokenlist *argvs = get_argvs(tokens);
+            //printf("size %d\n", argvs->size);
+            close(1);
+            dup(output_fd);
+            close(output_fd);
+            execv(argvs->items[0], argvs->items);
+
+            free_tokens(argvs);
+        }
+        else
+        {
+            int flag = execv(tokens->items[0], tokens->items);
+            printf("%d\n", flag);
+        }
+    }
+    else
+    {
+        waitpid(pid, NULL, 0);
+    }
+    return 0;
+}
+
+char *path_search(char* command)
+{
+    char *paths = getenv("PATH");
+    char *paths_cp = (char *) malloc(strlen(paths) + 1);
+    strcpy(paths_cp, paths);
+ //   printf("%s\n", paths_cp);
+    char *path = strtok(paths_cp, ":");
+
+    while (path != NULL)
+    {
+        char *temp = (char *) malloc(strlen(path) + strlen(command) + 2);
+        strcpy(temp, path);
+        strcat(temp, "/");
+        strcat(temp, command);
+  
+        if (access(temp, X_OK) != -1)
+        {
+            return temp;
+        }
+        free(temp);
+        path = strtok(NULL, ":"); 
+
+    }
+    free(paths_cp);
+    return NULL;
 }
