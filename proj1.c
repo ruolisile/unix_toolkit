@@ -22,6 +22,12 @@ typedef struct
     char **items;
 } tokenlist;
 
+typedef struct
+{
+    int size;
+    tokenlist **items;
+} cmdlist;
+
 //parser, reused from COP4610 OS Project 1
 char *get_input(void);
 tokenlist *get_tokens(char *input);
@@ -37,13 +43,14 @@ void out_redirect(tokenlist *tokens);
 
 //myexit
 int myexit(char *input, char *command, tokenlist *tokens);
-//mycd 
+//mycd
 void mycd(tokenlist *tokens);
+
 //mytree
 void mytree(char *dir, char *prefix);
 char *prefix_cat(const char *prefix, const char *ext);
 
-//mytime 
+//mytime
 void mytime(tokenlist *tokens);
 static int input_idx = -1;
 static int output_idx = -1;
@@ -55,7 +62,7 @@ static struct tms en_cpu;
 //void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
 void end_clock();
 
-//mymtimes 
+//mymtimes
 void mymtimes(tokenlist *tokens);
 long int get_mtime(char *path);
 void mtime(char *path, int count[], time_t curr_time);
@@ -63,13 +70,22 @@ void print_t(time_t);
 
 //run external command
 int exe(tokenlist *tokens);
-char *path_search(char* command);
+char *path_search(char *command, char *home_dir);
+
+//  static char *home_path; //get the dir where this program is located
+// home_path = getcwd(NULL, 0);
+cmdlist *new_cmdlist(void);
+
+cmdlist *get_cmd(tokenlist *tokens);
+void free_cmds(cmdlist *cmds);
+
 //main
 int main()
 {
-    char *home; //get the dir where this program is located
-    home = getcwd(NULL, 0);
-    printf("%s\n", home);
+    static char *home_dir;
+    home_dir = getcwd(NULL, 0);
+    //printf("%s\n", home_dir);
+
     while (1)
     {
         //prompt();
@@ -85,10 +101,42 @@ int main()
             continue;
         }
 
+        //printf("%s: %d\n", input, strlen(input));
         tokenlist *tokens = get_tokens(input);
+
+        cmdlist *cmds = new_cmdlist();
+        // cmds = get_cmd(tokens);
+        // for (size_t i = 0; i < cmds->size; i++)
+        // {
+        //     printf("cmd %ld\n", i);
+        //     for (size_t j = 0; j < cmds->items[i]->size; j++)
+        //     {
+        //         printf("%s\t", cmds->items[i]->items[j]);
+        //     }
+        //     printf("\n");
+
+        // }
+        // free_cmds(cmds);
+        // continue;
         char *command = (char *)malloc(strlen(tokens->items[0]) + 1);
         strcpy(command, tokens->items[0]);
+        if (strlen(command) == 0)
+        {
+            continue;
+        }
 
+        //pipe without I/O redirection
+        if (cmds->size > 1)
+        {
+            int p_fds[cmds->size - 1][2]; //pipe
+
+            for (size_t i = 0; i < cmds->size; i++)
+            {
+                /* code */
+            }
+        }
+
+        //single command & I/O redirection
         input_idx = -1;
         output_idx = -1;
         check_io(tokens, &input_idx, &output_idx);
@@ -103,7 +151,26 @@ int main()
             mycd(tokens);
             // printf("dir after change is %s\n", getenv("PWD"));
         }
-
+        else
+        {
+            char *cmd = path_search(command, home_dir);
+            tokenlist *argvs = get_argvs(tokens);
+            if (cmd != NULL)
+            {
+                pid_t pid = fork();
+                if (pid == 0)
+                {
+                    //char *temp[] = {"/home/liting/OneDrive/spring21/cop5570/project1/mytree", NULL};
+                    int val = execv(cmd, argvs->items);
+                    printf("executed %d\n", val);
+                }
+                else
+                {
+                    waitpid(pid, NULL, 0);
+                }
+            }
+        }
+        /* 
         else if (strcmp(command, "mypwd") == 0)
         {
             printf("%s\n", getenv("PWD"));
@@ -118,17 +185,18 @@ int main()
             {
                 out_redirect(tokens);
             }
-
-            if (argvs->size == 1)
+            pid_t pid = fork();
+            if (pid == 0)
             {
-                printf(".\n");
-                mytree(".", "|----");
+                //char *temp[] = {"/home/liting/OneDrive/spring21/cop5570/project1/mytree", NULL};
+                int val = execv(argvs->items[0], argvs->items);
+                printf("executed %d\n", val);
             }
             else
             {
-                printf("%s\n", argvs->items[1]);
-                mytree(argvs->items[1], "|----");
+                waitpid(pid, NULL, 0);
             }
+
             if (output_idx != -1)
             {
                 dup2(saved_stdout, 1);
@@ -155,31 +223,30 @@ int main()
                 close(saved_stdout);
                 printf("restored\n");
             }
-            
         }
         else
         {
-            char *exe_cmd= path_search(command);
-            printf("command %s\n", exe_cmd);
+            char *exe_cmd = path_search(command, home_dir);
             if (exe_cmd == NULL)
             {
-                printf("%s: Command not found\n", command);
+                //printf("command not found\n");
+                continue;
             }
             else
             {
                 tokens->items[0] = realloc(tokens->items[0], strlen(exe_cmd) + 1);
                 //printf("reallocated %ld %ld\n", strlen(tokens->items[0]),strlen(exe_cmd) + 1 );
-                
-                memset(tokens->items[0], '\0',strlen(tokens->items[0] + 1));
+
+                memset(tokens->items[0], '\0', strlen(tokens->items[0] + 1));
                 strcpy(tokens->items[0], exe_cmd);
-                
-               // printf("copied\n");
+
+                // printf("copied\n");
                 //printf("%s\n", tokens->items[0]);
                 exe(tokens);
             }
-            
+
             //free(exe_cmd);
-        }
+        } */
 
         free(input);
         free(command);
@@ -644,16 +711,6 @@ void out_redirect(tokenlist *tokens)
 tokenlist *get_argvs(tokenlist *tokens)
 {
     tokenlist *argvs = new_tokenlist();
-    int size = tokens->size;
-    if (input_idx != -1)
-    {
-        size -= 2;
-    }
-    if (output_idx != -1)
-    {
-        size -= 2;
-    }
-    argvs->size = size;
 
     int j = 0;
     for (size_t i = 0; i < tokens->size; i++)
@@ -664,8 +721,11 @@ tokenlist *get_argvs(tokenlist *tokens)
         }
         else
         {
-            argvs->items[j] = tokens->items[i];
+            // argvs->items[j] = (char *) malloc(strlen(tokens->items[i]));
+            // strcpy(argvs->items[j], tokens->items[i]);
+            //argvs->items[j] = tokens->items[i];
             j++;
+            add_token(argvs, tokens->items[i]);
         }
     }
 
@@ -748,29 +808,92 @@ int exe(tokenlist *tokens)
     return 0;
 }
 
-char *path_search(char* command)
+char *path_search(char *command, char *home_dir)
 {
+    char *builtin_exe = (char *)malloc(strlen(home_dir) + strlen(command) + 1);
+    strcpy(builtin_exe, home_dir);
+    strcat(builtin_exe, "/");
+    strcat(builtin_exe, command);
+    if (access(builtin_exe, X_OK) != -1)
+    {
+        return builtin_exe;
+    }
+
     char *paths = getenv("PATH");
-    char *paths_cp = (char *) malloc(strlen(paths) + 1);
+    char *paths_cp = (char *)malloc(strlen(paths) + 1);
     strcpy(paths_cp, paths);
- //   printf("%s\n", paths_cp);
+    //   printf("%s\n", paths_cp);
     char *path = strtok(paths_cp, ":");
 
     while (path != NULL)
     {
-        char *temp = (char *) malloc(strlen(path) + strlen(command) + 2);
+        char *temp = (char *)malloc(strlen(path) + strlen(command) + 2);
         strcpy(temp, path);
         strcat(temp, "/");
         strcat(temp, command);
-  
+
         if (access(temp, X_OK) != -1)
         {
             return temp;
         }
         free(temp);
-        path = strtok(NULL, ":"); 
-
+        path = strtok(NULL, ":");
     }
     free(paths_cp);
     return NULL;
+}
+
+cmdlist *new_cmdlist(void)
+{
+    cmdlist *cmds = (cmdlist *)malloc(sizeof(cmdlist));
+    cmds->size = 0;
+    cmds->items = (tokenlist **)malloc(sizeof(tokenlist *));
+    cmds->items[0] = NULL; /* make NULL terminated */
+    return cmds;
+}
+
+cmdlist *get_cmd(tokenlist *tokens)
+{
+
+    cmdlist *cmds = new_cmdlist();
+    //int j = 0; //index for tokenlist
+
+    int k = cmds->size;
+    cmds->items = (tokenlist **)realloc(cmds->items, (k + 2) * sizeof(tokenlist *));
+    cmds->items[k] = (tokenlist *)malloc(sizeof(tokenlist *));
+    for (size_t i = 0; i < tokens->size; i++)
+    {
+        if (strcmp(tokens->items[i], "|") == 0)
+        {
+            k += 1;
+            cmds->items = (tokenlist **)realloc(cmds->items, (k + 2) * sizeof(tokenlist *));
+            cmds->items[k] = (tokenlist *)malloc(sizeof(tokenlist *));
+            cmds->size += 1;
+            //printf("new command\n");
+
+            //j = 0;
+            continue;
+        }
+        else
+        {
+            add_token(cmds->items[k], tokens->items[i]);
+            //    printf("k %d\n", k);
+            //     for (size_t l = 0; l < cmds->items[k]->size; l++)
+            //     {
+            //         printf("%s\t", cmds->items[k]->items[l]);
+            //     }
+
+            //     printf("added token\n");
+        }
+    }
+    cmds->size += 1;
+    return cmds;
+}
+
+void free_cmds(cmdlist *cmds)
+{
+    for (size_t i = 0; i < cmds->size; i++)
+    {
+        free_tokens(cmds->items[i]);
+    }
 }
