@@ -69,7 +69,7 @@ void mtime(char *path, int count[], time_t curr_time);
 void print_t(time_t);
 
 //run external command
-int exe(tokenlist *tokens);
+int exe(char* cmd, tokenlist *tokens);
 char *path_search(char *command, char *home_dir);
 
 //  static char *home_path; //get the dir where this program is located
@@ -106,16 +106,7 @@ int main()
 
         cmdlist *cmds = new_cmdlist();
         // cmds = get_cmd(tokens);
-        // for (size_t i = 0; i < cmds->size; i++)
-        // {
-        //     printf("cmd %ld\n", i);
-        //     for (size_t j = 0; j < cmds->items[i]->size; j++)
-        //     {
-        //         printf("%s\t", cmds->items[i]->items[j]);
-        //     }
-        //     printf("\n");
 
-        // }
         // free_cmds(cmds);
         // continue;
         char *command = (char *)malloc(strlen(tokens->items[0]) + 1);
@@ -142,6 +133,7 @@ int main()
         check_io(tokens, &input_idx, &output_idx);
 
         if (strcmp(command, "myexit") == 0)
+
         {
             myexit(input, command, tokens);
         }
@@ -153,22 +145,18 @@ int main()
         }
         else
         {
-            char *cmd = path_search(command, home_dir);
-            tokenlist *argvs = get_argvs(tokens);
-            if (cmd != NULL)
+            char *exe_cmd = path_search(command, home_dir);
+           
+            //tokenlist *argvs = get_argvs(tokens);
+            if (exe_cmd != NULL)
             {
-                pid_t pid = fork();
-                if (pid == 0)
-                {
-                    //char *temp[] = {"/home/liting/OneDrive/spring21/cop5570/project1/mytree", NULL};
-                    int val = execv(cmd, argvs->items);
-                    printf("executed %d\n", val);
-                }
-                else
-                {
-                    waitpid(pid, NULL, 0);
-                }
+                printf("%s\n", tokens->items[0]);
+                 printf("%s %d\n", exe_cmd, strlen(exe_cmd));
+                exe(exe_cmd, tokens);
+               
             }
+             free(exe_cmd);
+            
         }
         /* 
         else if (strcmp(command, "mypwd") == 0)
@@ -176,34 +164,7 @@ int main()
             printf("%s\n", getenv("PWD"));
         }
 
-        else if (strcmp(command, "mytree") == 0)
-        {
 
-            tokenlist *argvs = get_argvs(tokens);
-            int saved_stdout = dup(1); //for restoring stdout to screen
-            if (output_idx != -1)
-            {
-                out_redirect(tokens);
-            }
-            pid_t pid = fork();
-            if (pid == 0)
-            {
-                //char *temp[] = {"/home/liting/OneDrive/spring21/cop5570/project1/mytree", NULL};
-                int val = execv(argvs->items[0], argvs->items);
-                printf("executed %d\n", val);
-            }
-            else
-            {
-                waitpid(pid, NULL, 0);
-            }
-
-            if (output_idx != -1)
-            {
-                dup2(saved_stdout, 1);
-                close(saved_stdout);
-                printf("restored\n");
-            }
-        }
         else if (strcmp(command, "mytime") == 0)
         {
             mytime(tokens);
@@ -224,28 +185,9 @@ int main()
                 printf("restored\n");
             }
         }
-        else
-        {
-            char *exe_cmd = path_search(command, home_dir);
-            if (exe_cmd == NULL)
-            {
-                //printf("command not found\n");
-                continue;
-            }
-            else
-            {
-                tokens->items[0] = realloc(tokens->items[0], strlen(exe_cmd) + 1);
-                //printf("reallocated %ld %ld\n", strlen(tokens->items[0]),strlen(exe_cmd) + 1 );
 
-                memset(tokens->items[0], '\0', strlen(tokens->items[0] + 1));
-                strcpy(tokens->items[0], exe_cmd);
 
-                // printf("copied\n");
-                //printf("%s\n", tokens->items[0]);
-                exe(tokens);
-            }
-
-            //free(exe_cmd);
+           
         } */
 
         free(input);
@@ -721,9 +663,6 @@ tokenlist *get_argvs(tokenlist *tokens)
         }
         else
         {
-            // argvs->items[j] = (char *) malloc(strlen(tokens->items[i]));
-            // strcpy(argvs->items[j], tokens->items[i]);
-            //argvs->items[j] = tokens->items[i];
             j++;
             add_token(argvs, tokens->items[i]);
         }
@@ -733,7 +672,7 @@ tokenlist *get_argvs(tokenlist *tokens)
 }
 
 //run external command
-int exe(tokenlist *tokens)
+int exe(char* cmd, tokenlist *tokens)
 {
     pid_t pid = fork();
     if (pid == 0)
@@ -759,7 +698,7 @@ int exe(tokenlist *tokens)
             close(output_fd);
             //create argument list
             tokenlist *argvs = get_argvs(tokens);
-            execv(argvs->items[0], argvs->items);
+            execv(cmd, argvs->items);
             free_tokens(argvs);
         }
         else if (input_idx != -1)
@@ -778,7 +717,7 @@ int exe(tokenlist *tokens)
 
             //get argument list
 
-            execvp(argvs->items[0], argvs->items);
+            execvp(cmd, argvs->items);
             free_tokens(argvs);
         }
         else if (output_idx != -1)
@@ -791,13 +730,14 @@ int exe(tokenlist *tokens)
             close(1);
             dup(output_fd);
             close(output_fd);
-            execv(argvs->items[0], argvs->items);
+            execv(cmd, argvs->items);
 
             free_tokens(argvs);
         }
         else
         {
-            int flag = execv(tokens->items[0], tokens->items);
+            int flag = execv(cmd, tokens->items);
+         
             printf("%d\n", flag);
         }
     }
