@@ -51,13 +51,15 @@ void mytree(char *dir, char *prefix);
 char *prefix_cat(const char *prefix, const char *ext);
 
 //mytime
-void mytime(tokenlist *tokens);
-static int input_idx = -1;
-static int output_idx = -1;
+void mytime(tokenlist *tokens, char *home_dir);
 static clock_t st_time;
 static clock_t en_time;
 static struct tms st_cpu;
 static struct tms en_cpu;
+
+static int input_idx = -1;
+static int output_idx = -1;
+
 //void real_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
 //void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
 void end_clock();
@@ -69,21 +71,25 @@ void mtime(char *path, int count[], time_t curr_time);
 void print_t(time_t);
 
 //run external command
-int exe(char* cmd, tokenlist *tokens);
+int exe(char *cmd, tokenlist *tokens);
 char *path_search(char *command, char *home_dir);
 
 //  static char *home_path; //get the dir where this program is located
 // home_path = getcwd(NULL, 0);
 cmdlist *new_cmdlist(void);
-
 cmdlist *get_cmd(tokenlist *tokens);
 void free_cmds(cmdlist *cmds);
-
-//main
+void exe_pipe(cmdlist *cmds, char *home_dir);
 int main()
 {
-    static char *home_dir;
-    home_dir = getcwd(NULL, 0);
+    char home_dir[128];
+    int bytes = readlink("/proc/self/cwd", home_dir, sizeof(home_dir) - 1);
+    if (bytes >= 0)
+        home_dir[bytes] = '\0';
+    printf("%s%d\n", home_dir, strlen(home_dir));
+    //return 0;
+    //static char *home_dir;
+    //home_dir = getcwd(NULL, 0);
     //printf("%s\n", home_dir);
 
     while (1)
@@ -91,7 +97,7 @@ int main()
         //prompt();
         printf("%s@%s:%s$ ", getenv("USER"), getenv("HOSTNAME"), getenv("PWD"));
         char *input = get_input();
-
+        // printf("%s\n", input);
         if (input == NULL)
         {
             return 0; //exit with ctrl-D
@@ -105,8 +111,17 @@ int main()
         tokenlist *tokens = get_tokens(input);
 
         cmdlist *cmds = new_cmdlist();
-        // cmds = get_cmd(tokens);
+        cmds = get_cmd(tokens);
+        // printf("%d\n", cmds->size);
+        // for (size_t i = 0; i < cmds->size; i++)
+        // {
+        //     for (size_t j = 0; j < (cmds->items[i])->size; j++)
+        //     {
+        //         printf("%s\n", (cmds->items[i])->items[j]);
+        //     }
 
+        // }
+        // return 0;
         // free_cmds(cmds);
         // continue;
         char *command = (char *)malloc(strlen(tokens->items[0]) + 1);
@@ -119,76 +134,51 @@ int main()
         //pipe without I/O redirection
         if (cmds->size > 1)
         {
-            int p_fds[cmds->size - 1][2]; //pipe
-
-            for (size_t i = 0; i < cmds->size; i++)
-            {
-                /* code */
-            }
-        }
-
-        //single command & I/O redirection
-        input_idx = -1;
-        output_idx = -1;
-        check_io(tokens, &input_idx, &output_idx);
-
-        if (strcmp(command, "myexit") == 0)
-
-        {
-            myexit(input, command, tokens);
-        }
-        else if (strcmp(command, "mycd") == 0)
-        {
-            // printf("current dir is %s\n", getenv("PWD"));
-            mycd(tokens);
-            // printf("dir after change is %s\n", getenv("PWD"));
+            exe_pipe(cmds, home_dir);
         }
         else
         {
-            char *exe_cmd = path_search(command, home_dir);
-           
-            //tokenlist *argvs = get_argvs(tokens);
-            if (exe_cmd != NULL)
+            //single command & I/O redirection
+            input_idx = -1;
+            output_idx = -1;
+            check_io(tokens, &input_idx, &output_idx);
+
+            if (strcmp(command, "myexit") == 0)
+
             {
-                printf("%s\n", tokens->items[0]);
-                 printf("%s %d\n", exe_cmd, strlen(exe_cmd));
-                exe(exe_cmd, tokens);
-               
+                myexit(input, command, tokens);
             }
-             free(exe_cmd);
-            
-        }
-        /* 
-        else if (strcmp(command, "mypwd") == 0)
-        {
-            printf("%s\n", getenv("PWD"));
-        }
-
-
-        else if (strcmp(command, "mytime") == 0)
-        {
-            mytime(tokens);
-        }
-        else if (strcmp(command, "mymtimes") == 0)
-        {
-            tokenlist *argvs = get_argvs(tokens);
-            int saved_stdout = dup(1); //for restoring stdout to screen
-            if (output_idx != -1)
+            else if (strcmp(command, "mycd") == 0)
             {
-                out_redirect(tokens);
+                // printf("current dir is %s\n", getenv("PWD"));
+                mycd(tokens);
+                // printf("dir after change is %s\n", getenv("PWD"));
             }
-            mymtimes(argvs);
-            if (output_idx != -1)
+
+            else if (strcmp(command, "mypwd") == 0)
             {
-                dup2(saved_stdout, 1);
-                close(saved_stdout);
-                printf("restored\n");
+                printf("%s\n", getenv("PWD"));
+            }
+
+            else if (strcmp(command, "mytime") == 0)
+            {
+
+                mytime(tokens, home_dir);
+            }
+            else
+            {
+                char *exe_cmd = path_search(command, home_dir);
+
+                //tokenlist *argvs = get_argvs(tokens);
+                if (exe_cmd != NULL)
+                {
+                    printf("%s\n", tokens->items[0]);
+                    // printf("%s %d\n", exe_cmd, strlen(exe_cmd));
+                    exe(exe_cmd, tokens);
+                }
+                free(exe_cmd);
             }
         }
-
-
-           
-        } */
 
         free(input);
         free(command);
@@ -409,15 +399,17 @@ char *prefix_cat(const char *prefix, const char *ext)
     return res;
 }
 
-void mytime(tokenlist *tokens)
+void mytime(tokenlist *tokens, char *home_dir)
 {
     //create new tokenlist without the first tokens
     tokenlist *toks = new_tokenlist();
-    toks->size = tokens->size - 1;
-    for (size_t i = 0; i < toks->size; i++)
+
+    //toks->size = tokens->size - 1;
+    for (size_t i = 0; i < tokens->size - 1; i++)
     {
-        toks->items[i] = tokens->items[i + 1];
-        printf("%s\n", toks->items[i]);
+        //  toks->items[i] = tokens->items[i + 1];
+        add_token(toks, tokens->items[i + 1]);
+        //   printf("%s%d\n", toks->items[i], strlen(toks->items[i]));
     }
 
     struct timeval start_t, end_t;
@@ -428,7 +420,7 @@ void mytime(tokenlist *tokens)
         exit(0);
         //will terminate the program without output
     }
-    if (strcmp(toks->items[0], "mycd") == 0)
+    else if (strcmp(toks->items[0], "mycd") == 0)
     {
         gettimeofday(&start_t, NULL);
 
@@ -454,42 +446,35 @@ void mytime(tokenlist *tokens)
         // sys_time(start_t, end_t, &total_min, &total_sec);
         // printf("sys\t\t%dm%.3fs\n", total_min, total_sec);
     }
-    if (strcmp(toks->items[0], "mytree") == 0)
+    else if (strcmp(toks->items[0], "mypwd") == 0)
     {
-        gettimeofday(&start_t, NULL);
-
-        st_time = times(&st_cpu);
-
-        mytree(toks->items[1], "----");
-        end_clock();
-
-        gettimeofday(&end_t, NULL);
-        //real time
-        printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
-        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
+        printf("%s\n", getenv("PWD"));
     }
-    if (strcmp(toks->items[0], "loop") == 0)
+
+    else
     {
         gettimeofday(&start_t, NULL);
 
         st_time = times(&st_cpu);
 
-        for (size_t i = 0; i < 100000000; i++)
+        char *exe_cmd = path_search(toks->items[0], home_dir);
+
+        //tokenlist *argvs = get_argvs(tokens);
+        if (exe_cmd != NULL)
         {
-            /* code */
+            printf("%s\n", toks->items[0]);
+            //  printf("%s %d\n", exe_cmd, strlen(exe_cmd));
+            exe(exe_cmd, toks);
         }
-
+        free(exe_cmd);
         end_clock();
-        // printf("Real Time: %jd, User Time %jd, System Time %jd\n",
-        // (intmax_t)(en_time - st_time),
-        // (intmax_t)(en_cpu.tms_utime - st_cpu.tms_utime),
-        // (intmax_t)(en_cpu.tms_stime - st_cpu.tms_stime));
 
         gettimeofday(&end_t, NULL);
         //real time
         printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
         printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
     }
+    free_tokens(toks);
 }
 
 // void real_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec)
@@ -672,7 +657,7 @@ tokenlist *get_argvs(tokenlist *tokens)
 }
 
 //run external command
-int exe(char* cmd, tokenlist *tokens)
+int exe(char *cmd, tokenlist *tokens)
 {
     pid_t pid = fork();
     if (pid == 0)
@@ -737,7 +722,7 @@ int exe(char* cmd, tokenlist *tokens)
         else
         {
             int flag = execv(cmd, tokens->items);
-         
+
             printf("%d\n", flag);
         }
     }
@@ -835,5 +820,51 @@ void free_cmds(cmdlist *cmds)
     for (size_t i = 0; i < cmds->size; i++)
     {
         free_tokens(cmds->items[i]);
+    }
+}
+
+void exe_pipe(cmdlist *cmds, char *home_dir)
+{
+    int i;
+    pid_t pid = fork();
+    if (pid == 0)
+    {
+        for (i = 0; i < cmds->size - 1; i++)
+        {
+            int pd[2];
+            pipe(pd);
+            pid = fork();
+            if (pid == 0)
+            {
+                dup2(pd[1], 1);
+                char *exe_cmd = path_search(cmds->items[i]->items[0], home_dir);
+                if (exe_cmd != NULL)
+                {
+                    execv(exe_cmd, cmds->items[i]->items);
+                    perror("exec");
+                    //abort();
+                }
+            }
+            else
+            {
+                waitpid(pid, NULL, 0);
+            }
+            dup2(pd[0], 0); //map output from previous child to input
+            close(pd[1]);   //close input
+        }
+        char *exe_cmd = path_search(cmds->items[i]->items[0], home_dir);
+        if (exe_cmd != NULL)
+        {
+
+            execv(exe_cmd, cmds->items[i]->items);
+        }
+
+        // exe(exe_cmd, cmds->items[i]);
+        //perror("exec");
+        //abort();
+    } /* code */
+    else
+    {
+        waitpid(pid, NULL, 0);
     }
 }
