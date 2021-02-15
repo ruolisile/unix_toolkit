@@ -15,6 +15,7 @@
 #include <sys/time.h>
 #include <sys/times.h>
 #include <time.h>
+#include <signal.h>
 
 typedef struct
 {
@@ -80,6 +81,16 @@ cmdlist *new_cmdlist(void);
 cmdlist *get_cmd(tokenlist *tokens);
 void free_cmds(cmdlist *cmds);
 void exe_pipe(cmdlist *cmds, char *home_dir);
+
+//timeout
+
+int timeout();
+static void timer_handler(int signo)
+{
+    printf("Time out\n");
+    exit(0);
+}
+
 int main()
 {
     char home_dir[128];
@@ -112,18 +123,7 @@ int main()
 
         cmdlist *cmds = new_cmdlist();
         cmds = get_cmd(tokens);
-        // printf("%d\n", cmds->size);
-        // for (size_t i = 0; i < cmds->size; i++)
-        // {
-        //     for (size_t j = 0; j < (cmds->items[i])->size; j++)
-        //     {
-        //         printf("%s\n", (cmds->items[i])->items[j]);
-        //     }
 
-        // }
-        // return 0;
-        // free_cmds(cmds);
-        // continue;
         char *command = (char *)malloc(strlen(tokens->items[0]) + 1);
         strcpy(command, tokens->items[0]);
         if (strlen(command) == 0)
@@ -157,13 +157,36 @@ int main()
 
             else if (strcmp(command, "mypwd") == 0)
             {
+                if(output_idx != -1)
+                {
+                    int saved_stdout = dup(1);
+                out_redirect(tokens);
                 printf("%s\n", getenv("PWD"));
+                dup2(saved_stdout, 1);
+                close(saved_stdout);                    
+                }
+                else
+                {
+                    printf("%s\n", getenv("PWD"));
+                }
+
             }
 
             else if (strcmp(command, "mytime") == 0)
             {
+                if(output_idx != -1)
+                {
+                    int saved_stdout = dup(1);
+                out_redirect(tokens);
+               mytime(tokens, home_dir);
+                dup2(saved_stdout, 1);
+                close(saved_stdout);                    
+                }
+                else
+                {
+                    mytime(tokens, home_dir);
+                }
 
-                mytime(tokens, home_dir);
             }
             else
             {
@@ -837,12 +860,31 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
             if (pid == 0)
             {
                 dup2(pd[1], 1);
-                char *exe_cmd = path_search(cmds->items[i]->items[0], home_dir);
-                if (exe_cmd != NULL)
+                if(strcmp(cmds->items[i]->items[0], "myexit") == 0)
                 {
-                    execv(exe_cmd, cmds->items[i]->items);
-                    perror("exec");
-                    //abort();
+                    exit(0);
+                }
+                else if (strcmp(cmds->items[i]->items[0], "mycd") == 0)
+                {
+                    mycd(cmds->items[i]);
+                }
+                else if (strcmp(cmds->items[i]->items[0], "mypwd") == 0)
+                {
+                    printf("%s\n", getenv("PWD"));
+                }
+                else if (strcmp(cmds->items[i]->items[0], "mytime") == 0)
+                {
+                    mytime(cmds->items[i], home_dir);
+                }
+                else
+                {
+                    char *exe_cmd = path_search(cmds->items[i]->items[0], home_dir);
+                    if (exe_cmd != NULL)
+                    {
+                        execv(exe_cmd, cmds->items[i]->items);
+                        perror("exec");
+                        
+                    }
                 }
             }
             else
@@ -858,13 +900,47 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
 
             execv(exe_cmd, cmds->items[i]->items);
         }
-
-        // exe(exe_cmd, cmds->items[i]);
-        //perror("exec");
-        //abort();
-    } /* code */
+    } 
     else
     {
         waitpid(pid, NULL, 0);
     }
+}
+
+static void timer_handler(int signo)
+{
+    printf("Time out\n");
+    exit(0);
+}
+
+int timeout()
+{
+
+    struct sigaction t_out;
+    t_out.sa_handler = timer_handler;
+    sigemptyset(&t_out.sa_mask);
+    t_out.sa_flags = 0;
+
+    pid_t pid;
+    if (pid = fork() == 0)
+    {
+
+        char *argv[] = {"loop", NULL};
+        execv("loop", argv);
+
+    }
+    else
+    {
+        // waitpid(pid, NULL, 0);
+      t_out.sa_handler = timer_handler;
+       sigaction(SIGALRM, &t_out, 0);
+
+        sleep(1);
+        
+        kill(pid, SIGALRM);
+       // exit(0);
+    }
+ 
+
+    
 }
