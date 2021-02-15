@@ -83,8 +83,8 @@ void free_cmds(cmdlist *cmds);
 void exe_pipe(cmdlist *cmds, char *home_dir);
 
 //timeout
-
-int timeout();
+//only works for external command
+void mytimeout(int secs, tokenlist *argvs);
 static void timer_handler(int signo)
 {
     printf("Time out\n");
@@ -157,37 +157,55 @@ int main()
 
             else if (strcmp(command, "mypwd") == 0)
             {
-                if(output_idx != -1)
+                if (output_idx != -1)
                 {
                     int saved_stdout = dup(1);
-                out_redirect(tokens);
-                printf("%s\n", getenv("PWD"));
-                dup2(saved_stdout, 1);
-                close(saved_stdout);                    
+                    out_redirect(tokens);
+                    printf("%s\n", getenv("PWD"));
+                    dup2(saved_stdout, 1);
+                    close(saved_stdout);
                 }
                 else
                 {
                     printf("%s\n", getenv("PWD"));
                 }
-
             }
 
             else if (strcmp(command, "mytime") == 0)
             {
-                if(output_idx != -1)
+                if (output_idx != -1)
                 {
                     int saved_stdout = dup(1);
-                out_redirect(tokens);
-               mytime(tokens, home_dir);
-                dup2(saved_stdout, 1);
-                close(saved_stdout);                    
+                    out_redirect(tokens);
+                    mytime(tokens, home_dir);
+                    dup2(saved_stdout, 1);
+                    close(saved_stdout);
                 }
                 else
                 {
                     mytime(tokens, home_dir);
                 }
-
             }
+            else if (strcmp(command, "mytimeout") == 0)
+            {
+                tokenlist *argvs = new_tokenlist();
+                int secs = atoi(tokens->items[1]);
+                //path search
+                char *cmd = path_search(tokens->items[2], home_dir);
+                if (cmd != NULL)
+                {
+                    add_token(argvs, cmd);
+                    for (size_t i = 3; i < tokens->size; i++)
+                    {
+                        add_token(argvs, tokens->items[i]);
+                    }
+                    mytimeout(secs, argvs);
+                }
+                free_tokens(argvs);
+
+                
+            }
+
             else
             {
                 char *exe_cmd = path_search(command, home_dir);
@@ -860,7 +878,7 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
             if (pid == 0)
             {
                 dup2(pd[1], 1);
-                if(strcmp(cmds->items[i]->items[0], "myexit") == 0)
+                if (strcmp(cmds->items[i]->items[0], "myexit") == 0)
                 {
                     exit(0);
                 }
@@ -883,7 +901,6 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
                     {
                         execv(exe_cmd, cmds->items[i]->items);
                         perror("exec");
-                        
                     }
                 }
             }
@@ -900,20 +917,14 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
 
             execv(exe_cmd, cmds->items[i]->items);
         }
-    } 
+    }
     else
     {
         waitpid(pid, NULL, 0);
     }
 }
 
-static void timer_handler(int signo)
-{
-    printf("Time out\n");
-    exit(0);
-}
-
-int timeout()
+void mytimeout(int secs, tokenlist *argvs)
 {
 
     struct sigaction t_out;
@@ -922,25 +933,20 @@ int timeout()
     t_out.sa_flags = 0;
 
     pid_t pid;
-    if (pid = fork() == 0)
+    if ((pid = fork()) == 0)
     {
-
-        char *argv[] = {"loop", NULL};
-        execv("loop", argv);
-
+       // execv(argvs->items[0], argvs);
+       execv(argvs->items[0], argvs->items);
     }
     else
     {
         // waitpid(pid, NULL, 0);
-      t_out.sa_handler = timer_handler;
-       sigaction(SIGALRM, &t_out, 0);
+        t_out.sa_handler = timer_handler;
+        sigaction(SIGALRM, &t_out, 0);
 
-        sleep(1);
-        
+        sleep(secs);
+
         kill(pid, SIGALRM);
-       // exit(0);
+        // exit(0);
     }
- 
-
-    
 }
