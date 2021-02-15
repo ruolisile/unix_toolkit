@@ -57,7 +57,7 @@ void mytree(char *dir, char *prefix)
         for (i = 0; i < n; i++)
         {
 
-            if (strcmp(namelist[i]->d_name, "..") == 0 || strcmp(namelist[i]->d_name, ".") == 0)
+            if (strncmp(namelist[i]->d_name, ".", 1) == 0 )
             {
                 continue;
             }

@@ -85,11 +85,15 @@ void exe_pipe(cmdlist *cmds, char *home_dir);
 //timeout
 //only works for external command
 void mytimeout(int secs, tokenlist *argvs);
+
+pid_t pid;
 static void timer_handler(int signo)
 {
     printf("Time out\n");
+     kill(pid, SIGALRM);
     exit(0);
 }
+
 
 int main()
 {
@@ -97,12 +101,9 @@ int main()
     int bytes = readlink("/proc/self/cwd", home_dir, sizeof(home_dir) - 1);
     if (bytes >= 0)
         home_dir[bytes] = '\0';
-    printf("%s%d\n", home_dir, strlen(home_dir));
-    //return 0;
-    //static char *home_dir;
-    //home_dir = getcwd(NULL, 0);
-    //printf("%s\n", home_dir);
+    //printf("%s%d\n", home_dir, strlen(home_dir));
 
+    
     while (1)
     {
         //prompt();
@@ -128,6 +129,8 @@ int main()
         strcpy(command, tokens->items[0]);
         if (strlen(command) == 0)
         {
+            free(command);
+            free_tokens(tokens);
             continue;
         }
 
@@ -135,90 +138,97 @@ int main()
         if (cmds->size > 1)
         {
             exe_pipe(cmds, home_dir);
+            free_cmds(cmds);
+            free_tokens(tokens);
+            continue;
+        }
+
+        //single command & I/O redirection
+        input_idx = -1;
+        output_idx = -1;
+        check_io(tokens, &input_idx, &output_idx);
+
+        if (strcmp(command, "myexit") == 0)
+
+        {
+            myexit(input, command, tokens);
+        }
+        else if (strcmp(command, "mycd") == 0)
+        {
+            // printf("current dir is %s\n", getenv("PWD"));
+            mycd(tokens);
+            // printf("dir after change is %s\n", getenv("PWD"));
+        }
+
+        else if (strcmp(command, "mypwd") == 0)
+        {
+            if (output_idx != -1)
+            {
+                int saved_stdout = dup(1);
+                out_redirect(tokens);
+                printf("%s\n", getenv("PWD"));
+                dup2(saved_stdout, 1);
+                close(saved_stdout);
+            }
+            else
+            {
+                printf("%s\n", getenv("PWD"));
+            }
+        }
+
+        else if (strcmp(command, "mytime") == 0)
+        {
+            if (output_idx != -1)
+            {
+                int saved_stdout = dup(1);
+                out_redirect(tokens);
+                mytime(tokens, home_dir);
+                dup2(saved_stdout, 1);
+                close(saved_stdout);
+            }
+            else
+            {
+                mytime(tokens, home_dir);
+            }
+        }
+        else if (strcmp(command, "mytimeout") == 0)
+        {
+            tokenlist *argvs = new_tokenlist();
+            int secs = atoi(tokens->items[1]);
+            //path search
+            char *cmd = path_search(tokens->items[2], home_dir);
+            if (cmd != NULL)
+            {
+                add_token(argvs, cmd);
+                for (size_t i = 3; i < tokens->size; i++)
+                {
+                    add_token(argvs, tokens->items[i]);
+                }
+                pid_t temp;
+                if((temp = fork()) == 0)
+                {
+                    mytimeout(secs, argvs);
+                }
+                else
+                {
+                    waitpid(temp, NULL, 0);
+                }
+                
+            }
+            free_tokens(argvs);
         }
         else
         {
-            //single command & I/O redirection
-            input_idx = -1;
-            output_idx = -1;
-            check_io(tokens, &input_idx, &output_idx);
+            char *exe_cmd = path_search(command, home_dir);
 
-            if (strcmp(command, "myexit") == 0)
-
+            //tokenlist *argvs = get_argvs(tokens);
+            if (exe_cmd != NULL)
             {
-                myexit(input, command, tokens);
+                printf("%s\n", tokens->items[0]);
+                // printf("%s %d\n", exe_cmd, strlen(exe_cmd));
+                exe(exe_cmd, tokens);
             }
-            else if (strcmp(command, "mycd") == 0)
-            {
-                // printf("current dir is %s\n", getenv("PWD"));
-                mycd(tokens);
-                // printf("dir after change is %s\n", getenv("PWD"));
-            }
-
-            else if (strcmp(command, "mypwd") == 0)
-            {
-                if (output_idx != -1)
-                {
-                    int saved_stdout = dup(1);
-                    out_redirect(tokens);
-                    printf("%s\n", getenv("PWD"));
-                    dup2(saved_stdout, 1);
-                    close(saved_stdout);
-                }
-                else
-                {
-                    printf("%s\n", getenv("PWD"));
-                }
-            }
-
-            else if (strcmp(command, "mytime") == 0)
-            {
-                if (output_idx != -1)
-                {
-                    int saved_stdout = dup(1);
-                    out_redirect(tokens);
-                    mytime(tokens, home_dir);
-                    dup2(saved_stdout, 1);
-                    close(saved_stdout);
-                }
-                else
-                {
-                    mytime(tokens, home_dir);
-                }
-            }
-            else if (strcmp(command, "mytimeout") == 0)
-            {
-                tokenlist *argvs = new_tokenlist();
-                int secs = atoi(tokens->items[1]);
-                //path search
-                char *cmd = path_search(tokens->items[2], home_dir);
-                if (cmd != NULL)
-                {
-                    add_token(argvs, cmd);
-                    for (size_t i = 3; i < tokens->size; i++)
-                    {
-                        add_token(argvs, tokens->items[i]);
-                    }
-                    mytimeout(secs, argvs);
-                }
-                free_tokens(argvs);
-
-                
-            }
-
-            else
-            {
-                char *exe_cmd = path_search(command, home_dir);
-
-                //tokenlist *argvs = get_argvs(tokens);
-                if (exe_cmd != NULL)
-                {
-                    printf("%s\n", tokens->items[0]);
-                    // printf("%s %d\n", exe_cmd, strlen(exe_cmd));
-                    exe(exe_cmd, tokens);
-                }
-                free(exe_cmd);
-            }
+            free(exe_cmd);
         }
 
         free(input);
@@ -388,9 +398,12 @@ void mytree(char *dir, char *prefix)
     {
         for (i = 0; i < n; i++)
         {
+        
 
-            if (strcmp(namelist[i]->d_name, "..") == 0 || strcmp(namelist[i]->d_name, ".") == 0)
+            if (strncmp(namelist[i]->d_name, ".", 1) == 0)
             {
+                printf("hi");
+                break;
                 continue;
             }
             if (namelist[i]->d_type == DT_DIR)
@@ -932,21 +945,28 @@ void mytimeout(int secs, tokenlist *argvs)
     sigemptyset(&t_out.sa_mask);
     t_out.sa_flags = 0;
 
-    pid_t pid;
+    
     if ((pid = fork()) == 0)
     {
-       // execv(argvs->items[0], argvs);
-       execv(argvs->items[0], argvs->items);
+        execv(argvs->items[0], argvs->items);
     }
     else
     {
-        // waitpid(pid, NULL, 0);
         t_out.sa_handler = timer_handler;
         sigaction(SIGALRM, &t_out, 0);
 
-        sleep(secs);
-
-        kill(pid, SIGALRM);
-        // exit(0);
+        alarm(secs);
+        int temp = 0;
+        for(;;)
+        {
+           // printf("inside for\n");
+         //printf("pid %d\t%d", pid, waitpid(pid, NULL, WNOHANG));
+            if(pid == (waitpid(pid, NULL, WNOHANG)))
+            {
+                printf("finished\n");
+                exit(0);
+            }
+        }
     }
+    exit(0);
 }
