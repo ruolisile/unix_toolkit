@@ -89,11 +89,10 @@ void mytimeout(int secs, tokenlist *argvs);
 pid_t pid;
 static void timer_handler(int signo)
 {
-    printf("Time out\n");
-     kill(pid, SIGALRM);
+  //  printf("Time out\n");
+    kill(pid, SIGALRM);
     exit(0);
 }
-
 
 int main()
 {
@@ -103,7 +102,6 @@ int main()
         home_dir[bytes] = '\0';
     //printf("%s%d\n", home_dir, strlen(home_dir));
 
-    
     while (1)
     {
         //prompt();
@@ -204,16 +202,22 @@ int main()
                 {
                     add_token(argvs, tokens->items[i]);
                 }
-                pid_t temp;
-                if((temp = fork()) == 0)
-                {
-                    mytimeout(secs, argvs);
-                }
-                else
-                {
-                    waitpid(temp, NULL, 0);
-                }
                 
+
+                    pid_t temp;
+                    if ((temp = fork()) == 0)
+                    {
+                        mytimeout(secs, argvs);
+                    }
+                    else
+                    {
+                        waitpid(temp, NULL, 0);
+                    }
+                
+            }
+            else
+            {
+                printf("%s: Command not found\n", tokens->items[2]);
             }
             free_tokens(argvs);
         }
@@ -398,7 +402,6 @@ void mytree(char *dir, char *prefix)
     {
         for (i = 0; i < n; i++)
         {
-        
 
             if (strncmp(namelist[i]->d_name, ".", 1) == 0)
             {
@@ -944,11 +947,25 @@ void mytimeout(int secs, tokenlist *argvs)
     t_out.sa_handler = timer_handler;
     sigemptyset(&t_out.sa_mask);
     t_out.sa_flags = 0;
-
-    
+    output_idx = -1;
+    check_io(argvs, &input_idx, &output_idx);
     if ((pid = fork()) == 0)
     {
-        execv(argvs->items[0], argvs->items);
+        if(output_idx != -1)
+        {
+            //printf("out index is %d\n", output_idx);
+            int saved_stdout = dup(1);
+            out_redirect(argvs);
+            tokenlist *new_argvs = get_argvs(argvs);
+            execv(argvs->items[0], new_argvs->items);
+            dup2(saved_stdout, 1);
+            close(saved_stdout);
+        }
+        else
+        {
+            execv(argvs->items[0], argvs->items);
+        }
+        
     }
     else
     {
@@ -956,14 +973,13 @@ void mytimeout(int secs, tokenlist *argvs)
         sigaction(SIGALRM, &t_out, 0);
 
         alarm(secs);
-        int temp = 0;
-        for(;;)
+        for (;;)
         {
-           // printf("inside for\n");
-         //printf("pid %d\t%d", pid, waitpid(pid, NULL, WNOHANG));
-            if(pid == (waitpid(pid, NULL, WNOHANG)))
+            // printf("inside for\n");
+            //printf("pid %d\t%d", pid, waitpid(pid, NULL, WNOHANG));
+            if (pid == (waitpid(pid, NULL, WNOHANG)))
             {
-                printf("finished\n");
+               // printf("finished\n");
                 exit(0);
             }
         }
