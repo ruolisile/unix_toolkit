@@ -16,12 +16,6 @@
 #include <sys/times.h>
 #include <time.h>
 
-typedef struct
-{
-    int size;
-    char **items;
-} tokenlist;
-
 void mytree(char *dir, char *prefix);
 char *prefix_cat(const char *prefix, const char *ext);
 
@@ -37,6 +31,7 @@ int main(int argv, char *argvs[])
         printf("%s\n", argvs[1]);
         mytree(argvs[1], "|----");
     }
+    exit(0);
 }
 
 //tree doesn't support input redirection

@@ -122,7 +122,7 @@ int main()
 
         cmdlist *cmds = new_cmdlist();
         cmds = get_cmd(tokens);
-
+        printf("%d\n", cmds->size);
         char *command = (char *)malloc(strlen(tokens->items[0]) + 1);
         strcpy(command, tokens->items[0]);
         if (strlen(command) == 0)
@@ -385,76 +385,6 @@ void mycd(tokenlist *tokens)
     }
 }
 
-//tree doesn't support input redirection
-// only inplement output redirection
-void mytree(char *dir, char *prefix)
-{
-    struct dirent **namelist;
-    int i, n;
-    char *prefix_ext;
-    n = scandir(dir, &namelist, 0, alphasort);
-    if (n < 0)
-    {
-        printf("mytree: No such file or directory\n");
-        return;
-    }
-    else
-    {
-        for (i = 0; i < n; i++)
-        {
-
-            if (strncmp(namelist[i]->d_name, ".", 1) == 0)
-            {
-                printf("hi");
-                break;
-                continue;
-            }
-            if (namelist[i]->d_type == DT_DIR)
-            {
-
-                printf("%s%s\n", prefix, namelist[i]->d_name);
-
-                char new_dir[128];
-                //printf("last char is %c\n", dir[strlen(dir) - 1]);
-                if (dir[strlen(dir) - 1] == '/')
-                {
-                    //  printf("with /\n");
-                    strcpy(new_dir, dir);
-                    strcat(new_dir, namelist[i]->d_name);
-                }
-                else
-                {
-                    // printf("without /\n");
-                    strcpy(new_dir, dir);
-                    // printf("new dir is %s\n", new_dir);
-                    strcat(new_dir, "/");
-                    //printf("new dir is %s\n", new_dir);
-                    strcat(new_dir, namelist[i]->d_name);
-                }
-                prefix_ext = "|----";
-
-                prefix_ext = prefix_cat(prefix, prefix_ext);
-                mytree(new_dir, prefix_ext);
-                free(prefix_ext);
-            }
-            else
-            {
-                //  printf("current level is %d\n", curr_level);
-                printf("%s%s\n", prefix, namelist[i]->d_name);
-            }
-            free(namelist[i]);
-        }
-    }
-    free(namelist);
-}
-
-char *prefix_cat(const char *prefix, const char *ext)
-{
-    char *res = malloc(strlen(prefix) + strlen(ext) + 1);
-    strcpy(res, prefix);
-    strcat(res, ext);
-    return res;
-}
 
 void mytime(tokenlist *tokens, char *home_dir)
 {
@@ -636,7 +566,7 @@ void mtime(char *path, int count[], time_t curr_time)
     }
     while ((dp = readdir(dir)) != NULL)
     {
-        if (strcmp(dp->d_name, ".") == 0 || strcmp(dp->d_name, "..") == 0)
+        if (strncmp(dp->d_name, ".", 1) == 0)
         {
             continue;
         }
@@ -716,6 +646,8 @@ tokenlist *get_argvs(tokenlist *tokens)
 //run external command
 int exe(char *cmd, tokenlist *tokens)
 {
+                //create argument list
+    tokenlist *argvs = get_argvs(tokens);
     pid_t pid = fork();
     if (pid == 0)
     {
@@ -738,10 +670,9 @@ int exe(char *cmd, tokenlist *tokens)
             close(1);
             dup(output_fd);
             close(output_fd);
-            //create argument list
-            tokenlist *argvs = get_argvs(tokens);
+
             execv(cmd, argvs->items);
-            free_tokens(argvs);
+            
         }
         else if (input_idx != -1)
         {
@@ -759,7 +690,7 @@ int exe(char *cmd, tokenlist *tokens)
 
             //get argument list
 
-            execvp(cmd, argvs->items);
+            execv(cmd, argvs->items);
             free_tokens(argvs);
         }
         else if (output_idx != -1)
@@ -767,19 +698,16 @@ int exe(char *cmd, tokenlist *tokens)
             //printf("out\n");
             int output_fd = open(tokens->items[output_idx], O_WRONLY | O_CREAT | O_TRUNC, 0666);
             //create argument list
-            tokenlist *argvs = get_argvs(tokens);
             //printf("size %d\n", argvs->size);
             close(1);
             dup(output_fd);
             close(output_fd);
             execv(cmd, argvs->items);
-
-            free_tokens(argvs);
+         
         }
         else
         {
             int flag = execv(cmd, tokens->items);
-
             printf("%d\n", flag);
         }
     }
@@ -787,12 +715,13 @@ int exe(char *cmd, tokenlist *tokens)
     {
         waitpid(pid, NULL, 0);
     }
+    free_tokens(argvs);
     return 0;
 }
 
 char *path_search(char *command, char *home_dir)
 {
-    char *builtin_exe = (char *)malloc(strlen(home_dir) + strlen(command) + 1);
+    char *builtin_exe = (char *)malloc(strlen(home_dir) + strlen(command) + 2);
     strcpy(builtin_exe, home_dir);
     strcat(builtin_exe, "/");
     strcat(builtin_exe, command);
@@ -813,6 +742,7 @@ char *path_search(char *command, char *home_dir)
         strcpy(temp, path);
         strcat(temp, "/");
         strcat(temp, command);
+        temp[strlen(temp)] = '\0';
 
         if (access(temp, X_OK) != -1)
         {
@@ -822,6 +752,7 @@ char *path_search(char *command, char *home_dir)
         path = strtok(NULL, ":");
     }
     free(paths_cp);
+    //free(paths);
     return NULL;
 }
 
@@ -838,26 +769,34 @@ cmdlist *get_cmd(tokenlist *tokens)
 {
 
     cmdlist *cmds = new_cmdlist();
-    //int j = 0; //index for tokenlist
 
-    int k = cmds->size;
+    int k = cmds->size; //0
+    //cmds->size = 1;
     cmds->items = (tokenlist **)realloc(cmds->items, (k + 2) * sizeof(tokenlist *));
-    cmds->items[k] = (tokenlist *)malloc(sizeof(tokenlist *));
+    //cmds->items[k] = (tokenlist *)malloc(sizeof(tokenlist *));
+    cmds->items[k] = new_tokenlist();
+    cmds->items[k + 1] = NULL;
     for (size_t i = 0; i < tokens->size; i++)
     {
+       
         if (strcmp(tokens->items[i], "|") == 0)
         {
+            
             k += 1;
+        printf("k is %d\n", k);
             cmds->items = (tokenlist **)realloc(cmds->items, (k + 2) * sizeof(tokenlist *));
-            cmds->items[k] = (tokenlist *)malloc(sizeof(tokenlist *));
+            //cmds->items[k] = (tokenlist *)malloc(sizeof(tokenlist *));
+           cmds->items[k] = new_tokenlist();
+            cmds->items[k + 1] = NULL;
             cmds->size += 1;
-            //printf("new command\n");
+            printf("size increase %d\n", cmds->size);
 
             //j = 0;
             continue;
         }
         else
         {
+            printf("K is %d \t %s\n", k, tokens->items[i]);
             add_token(cmds->items[k], tokens->items[i]);
             //    printf("k %d\n", k);
             //     for (size_t l = 0; l < cmds->items[k]->size; l++)
@@ -878,6 +817,7 @@ void free_cmds(cmdlist *cmds)
     {
         free_tokens(cmds->items[i]);
     }
+    free(cmds);
 }
 
 void exe_pipe(cmdlist *cmds, char *home_dir)
@@ -918,6 +858,7 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
                         execv(exe_cmd, cmds->items[i]->items);
                         perror("exec");
                     }
+                    free(exe_cmd);
                 }
             }
             else
@@ -933,6 +874,7 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
 
             execv(exe_cmd, cmds->items[i]->items);
         }
+        free(exe_cmd);
     }
     else
     {
