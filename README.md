@@ -1,6 +1,19 @@
 # unix_toolkit
 This is a simple unix systems toolkit for process and filesystem management. </br>
 
+## Build
+* Ensure Makefile, mytoolkit.c, mytree.c and mymtimes.c are all in the same directory. </br>
+* Run `make` to build the program. </br>
+* Use `./mytoolkit` to run the program. </br> 
+
+## Note
+* Commands, arguments, I/O symbols and pipe symbols should be space separated, otherwise the toolkit might behave abonormaly. </br>
+* The toolkit support all existing external unix command and functions within the same directory of this mytoolkit function. </br>
+* The toolkit support I/O redirection and pipe, however, I/O redirection and pipe in the same command line is not supported. </br>
+
+## Know Bugs
+* Buffer overflow might occur. 
+
 ## Functions
 
 ### myexit
@@ -31,13 +44,7 @@ This is a simple unix systems toolkit for process and filesystem management. </b
 **Description:** This is an external function. This function will run a command with time limit. </br>
 **Syntax:** `mytimeout <seconds> <command> [arguments]` where `<seconds>` is the time limit in second, `<command>` is the command to run and `arguments` is optional argument list for the command. </br>
 
-## Note
-* Commands, arguments, and I/O symbols and pipe symbols should be space separated, otherwise the toolkit might behave abonormaly. </br>
-* The toolkit support all existing external unix command and functions within the same directory of this mytoolkit function. </br>
-* The toolkit support I/O redirection and pipe, however, I/O redirection and pipe in the same command line is not supported. </br>
 
-## Know Bugs
-* BUffer overflow might occur. 
 
 
 
