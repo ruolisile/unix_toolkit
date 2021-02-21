@@ -11,6 +11,7 @@ This is a simple unix systems toolkit for process and filesystem management. </b
 * The toolkit support all existing external unix command and functions within the same directory of this mytoolkit function. </br>
 * The toolkit support I/O redirection and pipe, however, I/O redirection and pipe in the same command line is not supported. </br>
 * Even though there are some error handling, enterring incorrect command name might cause the function behave abnormally. </br>
+* If indirect input is used, all prompt messages(eg. ~$) will be printed to the screen after execution.  
 
 ## Known Bugs
 * Buffer overflow might occur. 
