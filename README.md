@@ -12,7 +12,7 @@ This is a simple unix systems toolkit for process and filesystem management. </b
 * The toolkit support I/O redirection and pipe, however, I/O redirection and pipe in the same command line is not supported. </br>
 * Even though there are some error handling, enterring incorrect command name might cause the function behave abnormally. </br>
 
-## Know Bugs
+## Known Bugs
 * Buffer overflow might occur. 
 * Pipe doesn't work with internal command `mycd`, `mypwd`, `mytime`, `mytimeout`.</br>
 
