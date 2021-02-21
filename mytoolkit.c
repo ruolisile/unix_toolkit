@@ -1,6 +1,6 @@
 /*A simple unix toolkit project
 * @Author Liting Zhang
-* @Date 1/30/2021
+* @Date 2/20/2021
 */
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,9 +30,8 @@ typedef struct
 } cmdlist;
 
 //parser, reused from COP4610 OS Project 1
-char *get_input(void);
-tokenlist *get_tokens(char *input);
 
+tokenlist *get_tokens(char *input);
 tokenlist *new_tokenlist(void);
 void add_token(tokenlist *tokens, char *item);
 void free_tokens(tokenlist *tokens);
@@ -44,25 +43,16 @@ void out_redirect(tokenlist *tokens);
 
 //myexit
 int myexit(char *input, char *command, tokenlist *tokens);
+
 //mycd
 void mycd(tokenlist *tokens);
-
-//mytree
-void mytree(char *dir, char *prefix);
-char *prefix_cat(const char *prefix, const char *ext);
-
 //mytime
 void mytime(tokenlist *tokens, char *home_dir);
-static clock_t st_time;
-static clock_t en_time;
 static struct tms st_cpu;
 static struct tms en_cpu;
+//for elapsed time
+struct timeval start_t, end_t;
 
-static int input_idx = -1;
-static int output_idx = -1;
-
-//void real_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
-//void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec);
 void end_clock();
 
 //mymtimes
@@ -75,8 +65,7 @@ void print_t(time_t);
 int exe(char *cmd, tokenlist *tokens);
 char *path_search(char *command, char *home_dir);
 
-//  static char *home_path; //get the dir where this program is located
-// home_path = getcwd(NULL, 0);
+//pasrsing for pipe
 cmdlist *new_cmdlist(void);
 cmdlist *get_cmd(tokenlist *tokens);
 void free_cmds(cmdlist *cmds);
@@ -84,15 +73,19 @@ void exe_pipe(cmdlist *cmds, char *home_dir);
 
 //timeout
 //only works for external command
-void mytimeout(int secs, tokenlist *argvs);
 
 pid_t pid;
+void mytimeout(int secs, tokenlist *argvs);
 static void timer_handler(int signo)
 {
-  //  printf("Time out\n");
+    //  printf("Time out\n");
     kill(pid, SIGALRM);
     exit(0);
 }
+
+//variables
+static int input_idx = -1;
+static int output_idx = -1;
 
 int main()
 {
@@ -106,33 +99,47 @@ int main()
     {
         //prompt();
         printf("%s@%s:%s$ ", getenv("USER"), getenv("HOSTNAME"), getenv("PWD"));
-        char *input = get_input();
+        size_t input_size = 80;
+        char *input = (char *)malloc(80 * sizeof(char));
+        size_t tmp;
+        tmp = getline(&input, &input_size, stdin);
         // printf("%s\n", input);
-        if (input == NULL)
+        if (tmp == -1)
         {
-            return 0; //exit with ctrl-D
+            exit(0); //handle EOF/CTRL-D
         }
-        else if (strlen(input) == 0) //handle newline
+        if (strncmp(input, "\n", 1) == 0)
         {
-            continue;
+            continue; //handle newline
         }
 
-        //printf("%s: %d\n", input, strlen(input));
+        input[strlen(input) - 1] = '\0';
+        //get tokens
         tokenlist *tokens = get_tokens(input);
-
+        //get command list
         cmdlist *cmds = new_cmdlist();
         cmds = get_cmd(tokens);
-        printf("%d\n", cmds->size);
+        // for (size_t i = 0; i < cmds->size; i++)
+        // {
+        //     for (size_t j = 0; j < cmds->items[i]->size; j++)
+        //     {
+        //         printf("%s%d\n", cmds->items[i]->items[j], strlen(cmds->items[i]->items[j]));
+
+        //     }
+
+        // }
+
+        //get the command
         char *command = (char *)malloc(strlen(tokens->items[0]) + 1);
         strcpy(command, tokens->items[0]);
         if (strlen(command) == 0)
         {
             free(command);
             free_tokens(tokens);
-            continue;
+            continue; //handle newline and CTRL-D
         }
 
-        //pipe without I/O redirection
+        //pipe
         if (cmds->size > 1)
         {
             exe_pipe(cmds, home_dir);
@@ -173,16 +180,18 @@ int main()
                 printf("%s\n", getenv("PWD"));
             }
         }
-
         else if (strcmp(command, "mytime") == 0)
         {
             if (output_idx != -1)
             {
                 int saved_stdout = dup(1);
                 out_redirect(tokens);
-                mytime(tokens, home_dir);
+
+                tokenlist *argvs = get_argvs(tokens);
+                mytime(argvs, home_dir);
                 dup2(saved_stdout, 1);
                 close(saved_stdout);
+                free_tokens(argvs);
             }
             else
             {
@@ -202,18 +211,15 @@ int main()
                 {
                     add_token(argvs, tokens->items[i]);
                 }
-                
-
-                    pid_t temp;
-                    if ((temp = fork()) == 0)
-                    {
-                        mytimeout(secs, argvs);
-                    }
-                    else
-                    {
-                        waitpid(temp, NULL, 0);
-                    }
-                
+                pid_t temp;
+                if ((temp = fork()) == 0)
+                {
+                    mytimeout(secs, argvs);
+                }
+                else
+                {
+                    waitpid(temp, NULL, 0);
+                }
             }
             else
             {
@@ -228,7 +234,7 @@ int main()
             //tokenlist *argvs = get_argvs(tokens);
             if (exe_cmd != NULL)
             {
-                printf("%s\n", tokens->items[0]);
+ //               printf("%s\n", tokens->items[0]);
                 // printf("%s %d\n", exe_cmd, strlen(exe_cmd));
                 exe(exe_cmd, tokens);
             }
@@ -260,47 +266,6 @@ void add_token(tokenlist *tokens, char *item)
     tokens->items[i + 1] = NULL;
     strcpy(tokens->items[i], item);
     tokens->size += 1;
-}
-
-char *get_input(void)
-{
-    char *buffer = NULL;
-    int bufsize = 0;
-
-    char line[5];
-    while (fgets(line, 5, stdin) != NULL)
-    {
-        // printf("line is %s\n", line);
-        int addby = 0;
-        char *newln = strchr(line, '\n');
-        //printf("newln is %s\n", newln);
-        if (newln != NULL)
-        {
-            //  printf("newln is not null\n");
-            addby = newln - line;
-            // printf("addby is %d\n", addby);
-        }
-        else
-            addby = 5 - 1;
-
-        buffer = (char *)realloc(buffer, bufsize + addby);
-        memcpy(&buffer[bufsize], line, addby);
-        // printf("buffer is %s\n", buffer);
-        bufsize += addby;
-        // printf("bufsize is %d\n", bufsize);
-
-        if (newln != NULL)
-            break;
-    }
-    //modified for ctrl-D
-    if (bufsize != 0)
-    {
-        buffer = (char *)realloc(buffer, bufsize + 1);
-        buffer[bufsize] = 0;
-    }
-
-    //printf("buffer is %s\n", buffer);
-    return buffer;
 }
 
 tokenlist *get_tokens(char *input)
@@ -385,7 +350,6 @@ void mycd(tokenlist *tokens)
     }
 }
 
-
 void mytime(tokenlist *tokens, char *home_dir)
 {
     //create new tokenlist without the first tokens
@@ -394,12 +358,8 @@ void mytime(tokenlist *tokens, char *home_dir)
     //toks->size = tokens->size - 1;
     for (size_t i = 0; i < tokens->size - 1; i++)
     {
-        //  toks->items[i] = tokens->items[i + 1];
         add_token(toks, tokens->items[i + 1]);
-        //   printf("%s%d\n", toks->items[i], strlen(toks->items[i]));
     }
-
-    struct timeval start_t, end_t;
 
     //if built in function
     if (strcmp(toks->items[0], "myexit") == 0)
@@ -410,107 +370,90 @@ void mytime(tokenlist *tokens, char *home_dir)
     else if (strcmp(toks->items[0], "mycd") == 0)
     {
         gettimeofday(&start_t, NULL);
-
-        st_time = times(&st_cpu);
+        times(&st_cpu);
         mycd(toks);
         end_clock();
-        // printf("Real Time: %jd, User Time %jd, System Time %jd\n",
-        // (intmax_t)(en_time - st_time),
-        // (intmax_t)(en_cpu.tms_utime - st_cpu.tms_utime),
-        // (intmax_t)(en_cpu.tms_stime - st_cpu.tms_stime));
-
-        gettimeofday(&end_t, NULL);
-        //real time
-        printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
-        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
-        // real_time(start_t, end_t, &total_min, &total_sec);
-
-        // total_sec += total_msec;
-        // printf("real\t\t%dm%.3fs\n", total_min, total_sec);
-        // //user time
-
-        // //sys CPU time
-        // sys_time(start_t, end_t, &total_min, &total_sec);
-        // printf("sys\t\t%dm%.3fs\n", total_min, total_sec);
     }
     else if (strcmp(toks->items[0], "mypwd") == 0)
     {
+        gettimeofday(&start_t, NULL);
+        times(&st_cpu);
         printf("%s\n", getenv("PWD"));
+        end_clock();
     }
+    else if (strcmp(toks->items[0], "mytimeout") == 0)
+    {
+        gettimeofday(&start_t, NULL);
+        times(&st_cpu);
+        tokenlist *argvs = new_tokenlist();
+        int secs = atoi(toks->items[1]);
 
+        //path search
+        char *cmd = path_search(toks->items[2], home_dir);
+
+        if (cmd != NULL)
+        {
+            add_token(argvs, cmd);
+            for (size_t i = 3; i < toks->size; i++)
+            {
+                add_token(argvs, toks->items[i]);
+            }
+            pid_t temp;
+            if ((temp = fork()) == 0)
+            {
+                mytimeout(secs, argvs);
+            }
+            else
+            {
+                waitpid(temp, NULL, 0);
+            }
+        }
+        else
+        {
+            printf("%s: Command not found\n", toks->items[2]);
+        }
+        free_tokens(argvs);
+        end_clock();
+    }
     else
     {
         gettimeofday(&start_t, NULL);
-
-        st_time = times(&st_cpu);
+        times(&st_cpu);
 
         char *exe_cmd = path_search(toks->items[0], home_dir);
 
         //tokenlist *argvs = get_argvs(tokens);
         if (exe_cmd != NULL)
         {
-            printf("%s\n", toks->items[0]);
-            //  printf("%s %d\n", exe_cmd, strlen(exe_cmd));
             exe(exe_cmd, toks);
+        }
+        else
+        {
+            printf("%s: Command not found\n", toks->items[0]);
         }
         free(exe_cmd);
         end_clock();
-
-        gettimeofday(&end_t, NULL);
-        //real time
-        printf("%ld\t%ld\n", start_t.tv_sec, end_t.tv_sec);
-        printf("%ld\t%ld\n", start_t.tv_usec, end_t.tv_usec);
     }
     free_tokens(toks);
 }
 
-// void real_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec)
-// {
-//     *total_min = (int)(end_t.tv_sec - start_t.tv_sec) / 60;
-//     *total_sec = (double)((end_t.tv_sec - start_t.tv_sec) % 60);
-//     double total_msec = (end_t.tv_usec - start_t.tv_usec) / (double)1000000;
-//     *total_sec += total_msec;
-// }
-
-// void sys_time(struct timeval start_t, struct timeval end_t, int *total_min, double *total_sec)
-// {
-//         *total_min = (int) ((end_t.tv_sec - start_t.tv_sec) / clk_tck) / 60;
-//         *total_sec =  (end_t.tv_sec - start_t.tv_sec) % clk_tck;
-//         double total_msec;
-//         total_msec = ((end_t.tv_usec - start_t.tv_usec) /(double)1000000);
-//         total_msec = total_msec / (double)clk_tck;
-//         *total_sec += total_msec;
-// }
-
 void end_clock()
 {
+    times(&en_cpu);
+    gettimeofday(&end_t, NULL);
     long clk_tck = sysconf(_SC_CLK_TCK);
-    en_time = times(&en_cpu);
-    //printf("%d\n", _SC_CLK_TCK);
-    //printf("en_time %ld\n", en_time);
-    //printf("st_time %ld\n", st_time);
-    //printf("%f\n", (en_time - st_time) / (double)clk_tck);
-    int min = ((en_time - st_time) / (double)clk_tck) / 60;
-    double sec = (en_time - st_time) / (double)clk_tck - min;
-    //printf("%f\n", (en_time - st_time) / (double)clk_tck - min);
-    printf("real\t\t%dm%.3fs\n", min, sec);
 
-    //printf("%ld\n", (en_cpu.tms_utime + en_cpu.tms_cutime));
-    //printf("%ld\n", (st_cpu.tms_utime + st_cpu.tms_cutime));
-    min = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime));
-    min = (min / (double)clk_tck) / 60;
-    sec = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime)) / (double)clk_tck - min;
-    printf("usr\t\t%dm%.3fs\n", min, sec);
+    double sec = ((en_cpu.tms_utime + en_cpu.tms_cutime) - (st_cpu.tms_utime + st_cpu.tms_cutime));
+    sec = (sec / (double)clk_tck);
+    printf("\nusr cpu time:\t%.3fs\n", sec);
 
-    //printf("%ld\n", (en_cpu.tms_stime + en_cpu.tms_cstime));
-    //printf("%ld\n", (st_cpu.tms_stime + st_cpu.tms_cstime));
-    min = ((en_cpu.tms_stime + en_cpu.tms_cstime) - (st_cpu.tms_stime + st_cpu.tms_cstime));
-    min = (min / (double)clk_tck) / 60;
-    sec = ((en_cpu.tms_stime + en_cpu.tms_cstime) -
-           (st_cpu.tms_stime + st_cpu.tms_cstime)) /
-              (double)clk_tck -
-          min;
-    printf("sys\t\t%dm%.3fs\n", min, sec);
+    sec = ((en_cpu.tms_stime + en_cpu.tms_cstime) - (st_cpu.tms_stime + st_cpu.tms_cstime));
+    sec = (sec / (double)clk_tck);
+    printf("sys cpu time:\t%.3fs\n", sec);
+
+    double elapsed = end_t.tv_sec - start_t.tv_sec;
+    elapsed = elapsed + (end_t.tv_usec - start_t.tv_usec) * 1e-6;
+    printf("elapsed time:\t%.3fs\n", elapsed);
 }
 
 void mymtimes(tokenlist *tokens)
@@ -646,7 +589,7 @@ tokenlist *get_argvs(tokenlist *tokens)
 //run external command
 int exe(char *cmd, tokenlist *tokens)
 {
-                //create argument list
+    //create argument list
     tokenlist *argvs = get_argvs(tokens);
     pid_t pid = fork();
     if (pid == 0)
@@ -672,7 +615,6 @@ int exe(char *cmd, tokenlist *tokens)
             close(output_fd);
 
             execv(cmd, argvs->items);
-            
         }
         else if (input_idx != -1)
         {
@@ -703,7 +645,6 @@ int exe(char *cmd, tokenlist *tokens)
             dup(output_fd);
             close(output_fd);
             execv(cmd, argvs->items);
-         
         }
         else
         {
@@ -778,33 +719,24 @@ cmdlist *get_cmd(tokenlist *tokens)
     cmds->items[k + 1] = NULL;
     for (size_t i = 0; i < tokens->size; i++)
     {
-       
+
         if (strcmp(tokens->items[i], "|") == 0)
         {
-            
+
             k += 1;
-        printf("k is %d\n", k);
+
             cmds->items = (tokenlist **)realloc(cmds->items, (k + 2) * sizeof(tokenlist *));
             //cmds->items[k] = (tokenlist *)malloc(sizeof(tokenlist *));
-           cmds->items[k] = new_tokenlist();
+            cmds->items[k] = new_tokenlist();
             cmds->items[k + 1] = NULL;
             cmds->size += 1;
-            printf("size increase %d\n", cmds->size);
 
             //j = 0;
             continue;
         }
         else
         {
-            printf("K is %d \t %s\n", k, tokens->items[i]);
             add_token(cmds->items[k], tokens->items[i]);
-            //    printf("k %d\n", k);
-            //     for (size_t l = 0; l < cmds->items[k]->size; l++)
-            //     {
-            //         printf("%s\t", cmds->items[k]->items[l]);
-            //     }
-
-            //     printf("added token\n");
         }
     }
     cmds->size += 1;
@@ -828,12 +760,14 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
     {
         for (i = 0; i < cmds->size - 1; i++)
         {
+            //    printf("i is %d\n", i);
             int pd[2];
             pipe(pd);
-            pid = fork();
-            if (pid == 0)
+            pid_t pid1 = fork();
+            //     printf("pid1 is %d\n", pid1);
+            if (pid1 == 0)
             {
-                dup2(pd[1], 1);
+
                 if (strcmp(cmds->items[i]->items[0], "myexit") == 0)
                 {
                     exit(0);
@@ -844,14 +778,18 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
                 }
                 else if (strcmp(cmds->items[i]->items[0], "mypwd") == 0)
                 {
+                    dup2(pd[1], 1);
                     printf("%s\n", getenv("PWD"));
                 }
                 else if (strcmp(cmds->items[i]->items[0], "mytime") == 0)
                 {
+                    printf("mytime\n");
+                    dup2(pd[1], 1);
                     mytime(cmds->items[i], home_dir);
                 }
                 else
                 {
+                    dup2(pd[1], 1);
                     char *exe_cmd = path_search(cmds->items[i]->items[0], home_dir);
                     if (exe_cmd != NULL)
                     {
@@ -863,10 +801,11 @@ void exe_pipe(cmdlist *cmds, char *home_dir)
             }
             else
             {
-                waitpid(pid, NULL, 0);
+                waitpid(pid1, NULL, 0);
             }
             dup2(pd[0], 0); //map output from previous child to input
             close(pd[1]);   //close input
+            printf("close input");
         }
         char *exe_cmd = path_search(cmds->items[i]->items[0], home_dir);
         if (exe_cmd != NULL)
@@ -893,7 +832,7 @@ void mytimeout(int secs, tokenlist *argvs)
     check_io(argvs, &input_idx, &output_idx);
     if ((pid = fork()) == 0)
     {
-        if(output_idx != -1)
+        if (output_idx != -1)
         {
             //printf("out index is %d\n", output_idx);
             int saved_stdout = dup(1);
@@ -907,7 +846,6 @@ void mytimeout(int secs, tokenlist *argvs)
         {
             execv(argvs->items[0], argvs->items);
         }
-        
     }
     else
     {
@@ -921,7 +859,7 @@ void mytimeout(int secs, tokenlist *argvs)
             //printf("pid %d\t%d", pid, waitpid(pid, NULL, WNOHANG));
             if (pid == (waitpid(pid, NULL, WNOHANG)))
             {
-               // printf("finished\n");
+                // printf("finished\n");
                 exit(0);
             }
         }

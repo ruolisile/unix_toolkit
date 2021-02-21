@@ -16,27 +16,31 @@
 #include <sys/times.h>
 #include <time.h>
 
-void mytree(char *dir, char *prefix);
+
+void mytree(char *dir, char *prefix, long *num_dir, long *num_file);
 char *prefix_cat(const char *prefix, const char *ext);
 
+    static long num_dir = 1;
+    static long num_file = 0;
 int main(int argv, char *argvs[])
 {
     if (argv == 1)
     {
         printf(".\n");
-        mytree(".", "|----");
+        mytree(".", "|----", &num_dir, &num_file);
     }
     else
     {
         printf("%s\n", argvs[1]);
-        mytree(argvs[1], "|----");
+        mytree(argvs[1], "|----", &num_dir, &num_file);
     }
+    printf("\n\n%ld directories, %ld files\n", num_dir, num_file);
     exit(0);
 }
 
 //tree doesn't support input redirection
 // only inplement output redirection
-void mytree(char *dir, char *prefix)
+void mytree(char *dir, char *prefix, long *num_dir, long *num_file)
 {
     struct dirent **namelist;
     int i, n;
@@ -58,7 +62,7 @@ void mytree(char *dir, char *prefix)
             }
             if (namelist[i]->d_type == DT_DIR)
             {
-
+		*num_file += 1;
                 printf("%s%s\n", prefix, namelist[i]->d_name);
 
                 char new_dir[128];
@@ -81,12 +85,13 @@ void mytree(char *dir, char *prefix)
                 prefix_ext = "|----";
 
                 prefix_ext = prefix_cat(prefix, prefix_ext);
-                mytree(new_dir, prefix_ext);
+                mytree(new_dir, prefix_ext,  num_dir, num_file);
                 free(prefix_ext);
             }
             else
             {
                 //  printf("current level is %d\n", curr_level);
+                *num_file += 1;
                 printf("%s%s\n", prefix, namelist[i]->d_name);
             }
             free(namelist[i]);
