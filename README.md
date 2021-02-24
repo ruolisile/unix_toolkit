@@ -17,6 +17,7 @@ This is a simple unix systems toolkit for process and filesystem management. </b
 ## Known Bugs
 * Buffer overflow might occur. 
 * Pipe doesn't work with internal command `mycd`, `mypwd`, `mytime`, `mytimeout`.</br>
+* If use `mytree [dir]` in pipe, and `args` is $HOME directory, mytoolkit might not work in the way that nothing will print out and mytoolkit will be broken. </br> 
 
 ## Functions
 
@@ -42,7 +43,7 @@ This is a simple unix systems toolkit for process and filesystem management. </b
 - system CPU time: the system CPU time (the sum of thetms_stime and tms_cstime values in a struct tms as returned by times(2)).
 - elapsed wall-clock time for running the command `cmd`: the elapsed real time between invocation and termination. </br>
 
-**Syntax:** `mytime cmd [arguments]`, where `cmd` is the command to run,`[arguments[` is the optional arguments for `cmd` </br>
+**Syntax:** `mytime cmd [arguments]`, where `cmd` is the command to run,`[arguments]` is the optional arguments for `cmd` </br>
 
 ### mymtimes
 **Description:** This is an external function. This function reports the hourly number of files last modified in the last 24 hours given a directory. </br>
