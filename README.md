@@ -33,13 +33,14 @@ This is a simple unix systems toolkit for process and filesystem management. </b
 
 ### mytree
 **Description:** This is an external function. This function prints the directories and files in a tree-like format.</br>
-**Syntax:** `mytree <dir>`, if `dir` is not specified, the command will use the current working directory as teh begining directory.</br>
+**Syntax:** `mytree <dir>`, if `dir` is not specified, the command will use the current working directory as the begining directory.</br>
 
 ### mytime
 **Description:** This is an internal function. This function report the following three values in seconds: </br>
 - user CPU time: the sum of the tms_utime and tms_cutime values in a struct tms as returned by times(2)
 - system CPU time: the system CPU time (the sum of thetms_stime and tms_cstime values in a struct tms as returned by times(2)).
 - elapsed wall-clock time for running the command `cmd`: the elapsed real time between invocation and termination. </br>
+
 **Syntax:** `mytime cmd [arguments]`, where `cmd` is the command to run,`[arguments[` is the optional arguments for `cmd` </br>
 
 ### mymtimes
