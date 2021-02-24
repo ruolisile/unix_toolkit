@@ -62,7 +62,7 @@ void mytree(char *dir, char *prefix, long *num_dir, long *num_file)
             }
             if (namelist[i]->d_type == DT_DIR)
             {
-		*num_file += 1;
+		*num_dir += 1;
                 printf("%s%s\n", prefix, namelist[i]->d_name);
 
                 char new_dir[128];
