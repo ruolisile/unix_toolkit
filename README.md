@@ -12,6 +12,7 @@ This is a simple unix systems toolkit for process and filesystem management. </b
 * The toolkit support I/O redirection and pipe, however, I/O redirection and pipe in the same command line is not supported. </br>
 * Even though there are some error handling, enterring incorrect command name might cause the function behave abnormally. </br>
 * If indirect input is used, all prompt messages(eg. ~$) will be printed to the screen after execution.  
+* If there are more than two commands in a line with i/o redirection, eg mytime mytree > out, only the I/O of the first command will be save to output file. 
 
 ## Known Bugs
 * Buffer overflow might occur. 
